@@ -1,5 +1,7 @@
 # 企业知识库 RAG Agent 问答系统
 
+[简体中文](README.md) | [English](README.en.md)
+
 这是一个适合 AI Agent / RAG / 大模型应用开发方向展示的本地 Demo 项目。系统基于 FastAPI 提供后端接口，支持文档上传、切分、向量化、Chroma 检索、RAG 问答、Dynamic Prompt、HyDE、RAGAS 评估和原生 Web 控制台。
 
 项目不虚构真实公司经历、用户量或生产数据，定位是“可运行的 Demo 原型”和“本地知识库问答系统”。
