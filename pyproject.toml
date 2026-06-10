@@ -1,0 +1,27 @@
+[project]
+name = "enterprise-knowledge-rag-agent"
+version = "0.1.0"
+description = "A beginner-friendly FastAPI, LangChain, and LangGraph RAG Agent demo."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "datasets>=5.0.0",
+    "fastapi>=0.115.0,<1.0.0",
+    "langchain>=0.2.16",
+    "langchain-chroma>=1.1.0",
+    "langchain-community>=0.4.2",
+    "langchain-core>=0.2.38",
+    "langchain-openai>=0.1.23",
+    "langchain-text-splitters>=0.2.4",
+    "langgraph>=0.2.19",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+    "pypdf>=4.2.0",
+    "python-multipart>=0.0.9",
+    "ragas>=0.4.0,<0.5.0",
+    "requests>=2.0.0",
+    "uvicorn[standard]>=0.30.0",
+]
+
+[tool.uv]
+package = false

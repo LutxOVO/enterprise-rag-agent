@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>企业知识库 RAG Agent 控制台</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">R</div>
+          <div>
+            <h1>企业知识库 RAG Agent</h1>
+            <p>文档上传、知识库问答、检索调试与 RAGAS 评估</p>
+          </div>
+        </div>
+        <div class="status-grid" id="statusGrid">
+          <div class="status-item">
+            <span>状态</span>
+            <strong id="healthText">检查中</strong>
+          </div>
+          <div class="status-item">
+            <span>文档</span>
+            <strong id="documentCount">-</strong>
+          </div>
+          <div class="status-item">
+            <span>切片</span>
+            <strong id="chunkCount">-</strong>
+          </div>
+          <div class="status-item">
+            <span>Embedding</span>
+            <strong id="embeddingProvider">-</strong>
+          </div>
+        </div>
+      </header>
+
+      <nav class="tabs" aria-label="功能导航">
+        <button class="tab-button active" data-tab="documents" type="button">
+          <span class="tab-icon">文</span> 文档
+        </button>
+        <button class="tab-button" data-tab="qa" type="button">
+          <span class="tab-icon">问</span> 问答
+        </button>
+        <button class="tab-button" data-tab="chunks" type="button">
+          <span class="tab-icon">检</span> 检索调试
+        </button>
+        <button class="tab-button" data-tab="ragas" type="button">
+          <span class="tab-icon">评</span> RAGAS 评估
+        </button>
+        <a class="docs-link" href="/docs" target="_blank" rel="noreferrer">Swagger 文档</a>
+      </nav>
+
+      <div class="notice" id="notice" hidden></div>
+
+      <main>
+        <section class="tab-panel active" id="documentsPanel">
+          <div class="section-header">
+            <div>
+              <h2>文档管理</h2>
+              <p>上传 txt、md、pdf 或 MinerU 支持的文档，后端会自动切分并写入 Chroma。</p>
+            </div>
+            <button class="button subtle" id="refreshDocumentsBtn" type="button">
+              <span class="button-icon">刷</span> 刷新
+            </button>
+          </div>
+
+          <div class="two-column">
+            <form class="panel" id="uploadForm">
+              <h3>上传文档</h3>
+              <label class="field">
+                <span>选择文件</span>
+                <input id="uploadFile" type="file" />
+              </label>
+              <button class="button primary" id="uploadBtn" type="submit">
+                <span class="button-icon">传</span> 上传并向量化
+              </button>
+              <div class="result-box" id="uploadResult">等待上传。</div>
+            </form>
+
+            <div class="panel danger-zone">
+              <h3>清理知识库</h3>
+              <p>清空 Chroma、SQLite 文档元数据和对话历史。演示前可用它清理重复文档。</p>
+              <label class="check-row">
+                <input id="deleteFiles" type="checkbox" checked />
+                <span>同时删除上传文件和 MinerU 输出</span>
+              </label>
+              <button class="button danger" id="clearVectorBtn" type="button">
+                <span class="button-icon">清</span> 清空向量库
+              </button>
+              <div class="result-box" id="clearResult">未执行清理。</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>已上传文档</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>文件名</th>
+                    <th>类型</th>
+                    <th>切片数</th>
+                    <th>创建时间</th>
+                    <th>Document ID</th>
+                  </tr>
+                </thead>
+                <tbody id="documentsTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="tab-panel" id="qaPanel">
+          <div class="section-header">
+            <div>
+              <h2>知识库问答</h2>
+              <p>对比普通 RAG(2-Step)、流式 RAG(2-Step) 和 Dynamic Prompt + Query Rewrite + HyDE。</p>
+            </div>
+          </div>
+
+          <div class="qa-layout">
+            <form class="panel ask-panel" id="askForm">
+              <div class="inline-fields">
+                <label class="field">
+                  <span>thread_id</span>
+                  <input id="threadId" type="text" value="default" />
+                </label>
+                <label class="field small-field">
+                  <span>top_k</span>
+                  <input id="qaTopK" type="number" min="1" max="10" value="3" />
+                </label>
+              </div>
+              <label class="field">
+                <span>问题</span>
+                <textarea id="questionInput" rows="7" placeholder="例如：员工报销需要准备哪些材料？"></textarea>
+              </label>
+              <div class="button-row">
+                <button class="button primary" id="askBtn" type="button">普通 RAG(2-Step)</button>
+                <button class="button" id="streamBtn" type="button">流式 RAG(2-Step)</button>
+                <button class="button accent" id="dynamicBtn" type="button">Dynamic RAG(Agentic)</button>
+              </div>
+            </form>
+
+            <div class="panel answer-panel">
+              <div class="answer-toolbar">
+                <h3>回答</h3>
+                <button class="button subtle" id="clearAnswerBtn" type="button">清空</button>
+              </div>
+              <div class="answer-text" id="answerText">还没有回答。</div>
+              <div class="sources" id="sourcesBox"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="tab-panel" id="chunksPanel">
+          <div class="section-header">
+            <div>
+              <h2>检索调试</h2>
+              <p>查看 Chroma 中保存的 chunk，检查切分内容、来源和向量维度。</p>
+            </div>
+            <div class="inline-controls">
+              <label class="mini-field">
+                <span>limit</span>
+                <input id="chunkLimit" type="number" min="1" max="100" value="20" />
+              </label>
+              <label class="mini-field">
+                <span>offset</span>
+                <input id="chunkOffset" type="number" min="0" value="0" />
+              </label>
+              <button class="button primary" id="loadChunksBtn" type="button">加载</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="result-summary" id="chunksSummary">尚未加载。</div>
+            <div class="chunk-list" id="chunkList"></div>
+          </div>
+        </section>
+
+        <section class="tab-panel" id="ragasPanel">
+          <div class="section-header">
+            <div>
+              <h2>RAGAS 评估</h2>
+              <p>先生成样本，再使用 DeepSeek 作为 Judge Model 运行评估。完整评估会比较慢并消耗 token。</p>
+            </div>
+          </div>
+
+          <div class="qa-layout">
+            <form class="panel" id="ragasForm">
+              <label class="field">
+                <span>dataset_path</span>
+                <input id="datasetPath" type="text" value="eval_data/ragas_eval_dataset.json" />
+              </label>
+              <label class="field">
+                <span>samples_output_path</span>
+                <input id="samplesOutputPath" type="text" value="eval_outputs/ragas_samples.json" />
+              </label>
+              <label class="field">
+                <span>result_output_path</span>
+                <input id="resultOutputPath" type="text" value="eval_outputs/ragas_result.json" />
+              </label>
+              <div class="inline-fields">
+                <label class="field small-field">
+                  <span>top_k</span>
+                  <input id="ragasTopK" type="number" min="1" max="10" value="3" />
+                </label>
+                <label class="field small-field">
+                  <span>max_samples</span>
+                  <input id="maxSamples" type="number" min="1" value="1" />
+                </label>
+              </div>
+              <label class="check-row">
+                <input id="forceRebuild" type="checkbox" />
+                <span>force_rebuild：重新生成回答和检索上下文</span>
+              </label>
+              <div class="button-row">
+                <button class="button primary" id="buildSamplesBtn" type="button">生成样本</button>
+                <button class="button accent" id="runRagasBtn" type="button">运行评估</button>
+              </div>
+            </form>
+
+            <div class="panel">
+              <h3>评估结果</h3>
+              <div class="result-box" id="ragasResult">尚未运行。</div>
+              <div class="metrics-grid" id="metricsGrid"></div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
