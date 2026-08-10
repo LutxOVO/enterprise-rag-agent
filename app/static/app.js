@@ -1,9 +1,15 @@
 const state = {
   currentTab: "documents",
+  lastBatchId: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+
+function onClick(selector, handler) {
+  const element = $(selector);
+  if (element) element.addEventListener("click", handler);
+}
 
 const RAGAS_METRIC_LABELS = {
   faithfulness: "忠实度 (Faithfulness)",
@@ -96,11 +102,11 @@ async function refreshStatus() {
 
 async function loadDocuments() {
   const tbody = $("#documentsTable");
-  tbody.innerHTML = `<tr><td colspan="5">加载中...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="6">加载中...</td></tr>`;
   try {
     const docs = await apiFetch("/api/documents");
     if (!docs.length) {
-      tbody.innerHTML = `<tr><td colspan="5" class="empty-state">暂无文档。</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="empty-state">暂无文档。</td></tr>`;
       return;
     }
 
@@ -113,37 +119,205 @@ async function loadDocuments() {
             <td>${escapeHtml(doc.chunk_count)}</td>
             <td>${escapeHtml(doc.created_at)}</td>
             <td>${escapeHtml(doc.document_id)}</td>
+            <td class="document-actions">
+              <button class="button subtle reindex-document" type="button" data-document-id="${escapeHtml(doc.document_id)}">重建索引</button>
+              <button class="button danger-text delete-document" type="button" data-document-id="${escapeHtml(doc.document_id)}">删除</button>
+            </td>
           </tr>
         `
       )
       .join("");
   } catch (error) {
-    tbody.innerHTML = `<tr><td colspan="5" class="empty-state">加载失败：${escapeHtml(error.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-state">加载失败：${escapeHtml(error.message)}</td></tr>`;
+  }
+}
+
+async function deleteDocument(documentId) {
+  const ok = window.confirm(`确认删除文档 ${documentId}？这会删除其向量、源文件和解析结果。`);
+  if (!ok) return;
+  try {
+    const result = await apiFetch(`/api/documents/${encodeURIComponent(documentId)}?delete_files=true`, {
+      method: "DELETE",
+    });
+    showNotice(`文档已删除：移除 ${result.removed_chunks} 个 chunk。`);
+    await Promise.all([refreshStatus(), loadDocuments(), loadBatchHistory()]);
+  } catch (error) {
+    showNotice(`删除文档失败：${error.message}`, "error");
+  }
+}
+
+async function reindexDocument(documentId, button) {
+  const ok = window.confirm(`确认重新解析并索引文档 ${documentId}？`);
+  if (!ok) return;
+  setLoading(button, true, "重建中...");
+  try {
+    const result = await apiFetch(`/api/documents/${encodeURIComponent(documentId)}/reindex`, {
+      method: "POST",
+    });
+    showNotice(`重建完成：${result.filename}，${result.chunk_count} 个 chunk。`);
+    await Promise.all([refreshStatus(), loadDocuments()]);
+  } catch (error) {
+    showNotice(`重建索引失败：${error.message}`, "error");
+  } finally {
+    setLoading(button, false);
+  }
+}
+
+const UPLOAD_STATUS_LABELS = {
+  running: "处理中",
+  completed: "已完成",
+  partial_success: "部分成功",
+  failed: "失败",
+  queued: "排队中",
+  saving: "保存中",
+  parsing: "解析中",
+  splitting: "切分中",
+  embedding: "向量化中",
+  indexed: "已入库",
+  duplicate: "重复跳过",
+};
+
+function formatUploadStatus(status) {
+  const label = UPLOAD_STATUS_LABELS[status] || status || "未知";
+  return `<span class="status-badge status-${escapeHtml(status || "unknown")}">${escapeHtml(label)}</span>`;
+}
+
+function formatDuration(durationMs) {
+  const value = Number(durationMs || 0);
+  return value ? `${value} ms` : "-";
+}
+
+function renderBatchItems(items = [], batchId = state.lastBatchId) {
+  const tbody = $("#batchItemsTable");
+  if (!tbody) return;
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-state">当前批次没有文件明细。</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = items
+    .map((item) => {
+      const identifier = item.document_id
+        ? `Document ID: ${escapeHtml(item.document_id)}`
+        : escapeHtml(item.error || "-");
+      const retryButton = item.status === "failed"
+        ? `<button class="button subtle retry-upload" type="button" data-batch-id="${escapeHtml(batchId)}" data-item-id="${escapeHtml(item.item_id)}">重试</button>`
+        : "-";
+      return `
+        <tr>
+          <td>${escapeHtml(item.filename)}</td>
+          <td>${formatUploadStatus(item.status)}</td>
+          <td>${escapeHtml(item.chunk_count)}</td>
+          <td>${escapeHtml(formatDuration(item.duration_ms))}</td>
+          <td>${escapeHtml(item.error_stage || "-")}</td>
+          <td>${identifier}${item.error && item.document_id ? `<br><span class="error-text">${escapeHtml(item.error)}</span>` : ""}</td>
+          <td>${retryButton}</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function renderBatchResult(result) {
+  state.lastBatchId = result.batch_id || state.lastBatchId;
+  $("#uploadResult").textContent = JSON.stringify(result, null, 2);
+  renderBatchItems(result.items || [], state.lastBatchId);
+}
+
+async function loadBatchHistory() {
+  const tbody = $("#batchHistoryTable");
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="6">加载中...</td></tr>`;
+  try {
+    const batches = await apiFetch("/api/documents/upload-batches?limit=20");
+    if (!batches.length) {
+      tbody.innerHTML = `<tr><td colspan="6" class="empty-state">暂无批次记录。</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = batches
+      .map(
+        (batch) => `
+          <tr>
+            <td title="${escapeHtml(batch.batch_id)}">${escapeHtml(batch.batch_id.slice(0, 12))}...</td>
+            <td>${formatUploadStatus(batch.status)}</td>
+            <td>成功 ${escapeHtml(batch.succeeded)} / 失败 ${escapeHtml(batch.failed)} / 跳过 ${escapeHtml(batch.skipped)} / 共 ${escapeHtml(batch.total)}</td>
+            <td>${escapeHtml(formatDuration(batch.duration_ms))}</td>
+            <td>${escapeHtml(batch.created_at)}</td>
+            <td><button class="button subtle batch-detail" type="button" data-batch-id="${escapeHtml(batch.batch_id)}">查看</button></td>
+          </tr>
+        `
+      )
+      .join("");
+  } catch (error) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-state">加载失败：${escapeHtml(error.message)}</td></tr>`;
+  }
+}
+
+async function loadBatchDetail(batchId) {
+  try {
+    const result = await apiFetch(`/api/documents/upload-batches/${encodeURIComponent(batchId)}`);
+    renderBatchResult(result);
+    showNotice(`已加载批次：${result.status}`);
+  } catch (error) {
+    showNotice(`批次加载失败：${error.message}`, "error");
+  }
+}
+
+async function retryBatchItem(batchId, itemId, button) {
+  setLoading(button, true, "重试中...");
+  try {
+    const result = await apiFetch(
+      `/api/documents/upload-batches/${encodeURIComponent(batchId)}/items/${encodeURIComponent(itemId)}/retry`,
+      { method: "POST" }
+    );
+    renderBatchResult(result);
+    await Promise.all([refreshStatus(), loadDocuments(), loadBatchHistory()]);
+    showNotice(`重试完成：${result.status}`);
+  } catch (error) {
+    showNotice(`重试失败：${error.message}`, "error");
+  } finally {
+    setLoading(button, false);
   }
 }
 
 async function uploadDocument(event) {
   event.preventDefault();
   hideNotice();
-  const file = $("#uploadFile").files[0];
-  if (!file) {
+  const files = Array.from($("#uploadFile").files || []);
+  if (!files.length) {
     showNotice("请先选择文件。", "error");
     return;
   }
 
   const formData = new FormData();
-  formData.append("file", file);
+  for (const file of files) {
+    formData.append(files.length === 1 ? "file" : "files", file);
+  }
   const button = $("#uploadBtn");
-  setLoading(button, true, "上传中...");
+  setLoading(button, true, files.length === 1 ? "上传中..." : "批量上传中...");
 
   try {
-    const result = await apiFetch("/api/documents/upload", {
+    const url = files.length === 1 ? "/api/documents/upload" : "/api/documents/upload-batch";
+    showNotice(files.length === 1 ? "正在调用单文件上传接口..." : `正在调用批量上传接口，共 ${files.length} 个文件...`);
+    const result = await apiFetch(url, {
       method: "POST",
       body: formData,
     });
-    $("#uploadResult").textContent = JSON.stringify(result, null, 2);
-    showNotice(`上传成功：${result.filename}，生成 ${result.chunk_count} 个 chunk。`);
-    await Promise.all([refreshStatus(), loadDocuments()]);
+    if (files.length > 1) {
+      renderBatchResult(result);
+    } else {
+      $("#uploadResult").textContent = JSON.stringify(result, null, 2);
+      renderBatchItems([], state.lastBatchId);
+    }
+    if (files.length === 1) {
+      const message = result.status === "duplicate"
+        ? `重复文件已跳过：${result.filename}。`
+        : `上传成功：${result.filename}，生成 ${result.chunk_count} 个 chunk。`;
+      showNotice(message);
+    } else {
+      showNotice(`批量上传完成：成功 ${result.succeeded} 个，失败 ${result.failed} 个，跳过 ${result.skipped} 个。`);
+    }
+    await Promise.all([refreshStatus(), loadDocuments(), loadBatchHistory()]);
   } catch (error) {
     $("#uploadResult").textContent = error.message;
     showNotice(`上传失败：${error.message}`, "error");
@@ -167,7 +341,9 @@ async function clearVectorStore() {
     });
     $("#clearResult").textContent = JSON.stringify(result, null, 2);
     showNotice("向量库已清空。");
-    await Promise.all([refreshStatus(), loadDocuments(), loadChunks()]);
+    state.lastBatchId = null;
+    renderBatchItems([]);
+    await Promise.all([refreshStatus(), loadDocuments(), loadChunks(), loadBatchHistory()]);
   } catch (error) {
     $("#clearResult").textContent = error.message;
     showNotice(`清理失败：${error.message}`, "error");
@@ -183,6 +359,9 @@ function getQuestionPayload() {
     question,
     thread_id: $("#threadId").value.trim() || "default",
     top_k: parseIntInput("#qaTopK", 3),
+    retrieval_strategy: $("#retrievalStrategy").value,
+    document_id: $("#documentIdFilter").value.trim() || null,
+    filename: $("#filenameFilter").value.trim() || null,
   };
 }
 
@@ -199,7 +378,7 @@ function renderSources(sources = []) {
         <details class="source-card">
           <summary class="source-summary">
             <strong>${index + 1}. ${escapeHtml(source.filename || "unknown")}</strong>
-            <span class="source-meta">切片 ${escapeHtml(source.chunk_index)} / 得分 ${escapeHtml(source.score)}</span>
+            <span class="source-meta">${escapeHtml(source.retrieval_strategy || "dense")} / 切片 ${escapeHtml(source.chunk_index)} / 得分 ${escapeHtml(source.score)}${source.bm25_rank ? ` / BM25#${escapeHtml(source.bm25_rank)}` : ""}</span>
           </summary>
           <pre>${escapeHtml(source.content_preview)}</pre>
         </details>
@@ -210,8 +389,12 @@ function renderSources(sources = []) {
 
 function renderDynamicExtra(extra = {}) {
   const chunks = extra.retrieved_chunks || [];
+  const graphPath = (extra.graph_path || []).join(" -> ");
   const queryInfo = `
 Dynamic RAG 调试信息
+
+Graph 全程路径 (graph_path):
+${graphPath}
 
 原始问题 (original_query):
 ${extra.original_query || ""}
@@ -224,6 +407,12 @@ ${extra.hyde_answer || ""}
 
 实际检索文本 (retrieval_query):
 ${extra.retrieval_query || ""}
+
+上下文是否足够 (context_sufficient):
+${extra.context_sufficient ? "是" : "否"}
+
+上下文充分性判断原因 (context_evaluation_reason):
+${extra.context_evaluation_reason || ""}
 `;
   $("#answerText").textContent = queryInfo;
 
@@ -342,6 +531,47 @@ async function askDynamicRag() {
   }
 }
 
+async function askLangGraphAgent() {
+  hideNotice();
+  const button = $("#langGraphBtn");
+  setLoading(button, true, "LangGraph Agent 中...");
+  $("#sourcesBox").innerHTML = "";
+  try {
+    const question = $("#questionInput").value.trim();
+    if (!question) throw new Error("请输入问题。");
+    const result = await apiFetch("/api/agent/invoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        input: question,
+        thread_id: $("#threadId").value.trim() || "default",
+      }),
+    });
+    const extra = result.extra || {};
+    const graphPath = (extra.graph_path || []).join(" -> ");
+    $("#answerText").textContent = `LangGraph Agent 调试信息
+
+Graph 全程路径 (graph_path):
+${graphPath}
+
+路由结果 (route):
+${extra.route || ""}
+
+路由原因 (route_reason):
+${extra.route_reason || ""}
+
+实际工具 (tool_used):
+${result.tool_used || ""}
+
+工具输出 (output):
+${result.output || ""}`;
+  } catch (error) {
+    showNotice(`LangGraph Agent 失败：${error.message}`, "error");
+  } finally {
+    setLoading(button, false);
+  }
+}
+
 async function loadChunks() {
   const limit = parseIntInput("#chunkLimit", 20);
   const offset = parseIntInput("#chunkOffset", 0);
@@ -377,11 +607,56 @@ async function loadChunks() {
   }
 }
 
-function getRagasPayload() {
+const RAGAS_DEFAULT_PATHS = {
+  baseline: {
+    samples: "eval_outputs/ragas_samples_baseline.json",
+    result: "eval_outputs/ragas_result_baseline.json",
+  },
+  hyde_rewrite: {
+    samples: "eval_outputs/ragas_samples_hyde_rewrite.json",
+    result: "eval_outputs/ragas_result_hyde_rewrite.json",
+  },
+};
+
+let lastRagasMode = "baseline";
+let lastRagasStrategy = "dense";
+
+function getRagasDefaultPaths(mode, strategy) {
+  if (strategy === "dense") return RAGAS_DEFAULT_PATHS[mode];
   return {
-    dataset_path: $("#datasetPath").value.trim() || "eval_data/ragas_eval_dataset.json",
-    samples_output_path: $("#samplesOutputPath").value.trim() || "eval_outputs/ragas_samples.json",
-    result_output_path: $("#resultOutputPath").value.trim() || "eval_outputs/ragas_result.json",
+    samples: `eval_outputs/ragas_samples_${mode}_${strategy}.json`,
+    result: `eval_outputs/ragas_result_${mode}_${strategy}.json`,
+  };
+}
+
+function syncRagasOutputPaths() {
+  const mode = $("#retrievalMode").value;
+  const strategy = $("#ragasRetrievalStrategy").value;
+  const previousPaths = getRagasDefaultPaths(lastRagasMode, lastRagasStrategy);
+  const nextPaths = getRagasDefaultPaths(mode, strategy);
+  const samplesInput = $("#samplesOutputPath");
+  const resultInput = $("#resultOutputPath");
+
+  if (!samplesInput.value || samplesInput.value === previousPaths.samples) {
+    samplesInput.value = nextPaths.samples;
+  }
+  if (!resultInput.value || resultInput.value === previousPaths.result) {
+    resultInput.value = nextPaths.result;
+  }
+  lastRagasMode = mode;
+  lastRagasStrategy = strategy;
+}
+
+function getRagasPayload() {
+  const retrievalMode = $("#retrievalMode").value;
+  const retrievalStrategy = $("#ragasRetrievalStrategy").value;
+  const defaultPaths = getRagasDefaultPaths(retrievalMode, retrievalStrategy);
+  return {
+    dataset_path: $("#datasetPath").value.trim() || "eval_data/ai_agents_in_depth_eval_dataset.json",
+    retrieval_mode: retrievalMode,
+    retrieval_strategy: retrievalStrategy,
+    samples_output_path: $("#samplesOutputPath").value.trim() || defaultPaths.samples,
+    result_output_path: $("#resultOutputPath").value.trim() || defaultPaths.result,
     top_k: parseIntInput("#ragasTopK", 3),
     max_samples: parseOptionalInt("#maxSamples"),
     force_rebuild: $("#forceRebuild").checked,
@@ -392,6 +667,8 @@ function renderRagasResult(result) {
   $("#ragasResult").textContent = JSON.stringify(
     {
       sample_count: result.sample_count,
+      retrieval_mode: result.retrieval_mode,
+      retrieval_strategy: result.retrieval_strategy,
       cache_used: result.cache_used,
       cache_status: result.cache_status,
       samples_path: result.samples_path,
@@ -399,18 +676,24 @@ function renderRagasResult(result) {
       csv_path: result.csv_path,
       top_k: result.top_k,
       max_samples: result.max_samples,
+      retrieval_metrics: result.retrieval_metrics,
+      metric_null_counts: result.metric_null_counts,
+      summary_path: result.summary_path,
     },
     null,
     2
   );
 
-  const metrics = result.metrics || {};
+  const metrics = {
+    ...(result.metrics || {}),
+    ...(result.retrieval_metrics || {}),
+  };
   $("#metricsGrid").innerHTML = Object.entries(metrics)
     .map(
       ([name, value]) => `
         <div class="metric-card">
           <span>${escapeHtml(formatRagasMetricName(name))}</span>
-          <strong>${escapeHtml(value)}</strong>
+          <strong>${escapeHtml(value == null ? "-" : value)}</strong>
         </div>
       `
     )
@@ -477,26 +760,44 @@ function bindEvents() {
   });
 
   $("#uploadForm").addEventListener("submit", uploadDocument);
+  $("#retrievalMode").addEventListener("change", syncRagasOutputPaths);
+  $("#ragasRetrievalStrategy").addEventListener("change", syncRagasOutputPaths);
   $("#refreshDocumentsBtn").addEventListener("click", () => {
     refreshStatus();
     loadDocuments();
   });
-  $("#clearVectorBtn").addEventListener("click", clearVectorStore);
-  $("#askBtn").addEventListener("click", askRag);
-  $("#streamBtn").addEventListener("click", streamRag);
-  $("#dynamicBtn").addEventListener("click", askDynamicRag);
+  onClick("#clearVectorBtn", clearVectorStore);
+  onClick("#refreshBatchHistoryBtn", loadBatchHistory);
+  onClick("#askBtn", askRag);
+  onClick("#streamBtn", streamRag);
+  onClick("#langGraphBtn", askLangGraphAgent);
+  onClick("#dynamicBtn", askDynamicRag);
   $("#clearAnswerBtn").addEventListener("click", () => {
     $("#answerText").textContent = "还没有回答。";
     $("#sourcesBox").innerHTML = "";
   });
-  $("#loadChunksBtn").addEventListener("click", loadChunks);
-  $("#buildSamplesBtn").addEventListener("click", buildRagasSamples);
-  $("#runRagasBtn").addEventListener("click", runRagas);
+  onClick("#loadChunksBtn", loadChunks);
+  onClick("#buildSamplesBtn", buildRagasSamples);
+  onClick("#runRagasBtn", runRagas);
+
+  document.addEventListener("click", (event) => {
+    const retryButton = event.target.closest(".retry-upload");
+    if (retryButton) {
+      retryBatchItem(retryButton.dataset.batchId, retryButton.dataset.itemId, retryButton);
+      return;
+    }
+    const detailButton = event.target.closest(".batch-detail");
+    if (detailButton) loadBatchDetail(detailButton.dataset.batchId);
+    const deleteButton = event.target.closest(".delete-document");
+    if (deleteButton) deleteDocument(deleteButton.dataset.documentId);
+    const reindexButton = event.target.closest(".reindex-document");
+    if (reindexButton) reindexDocument(reindexButton.dataset.documentId, reindexButton);
+  });
 }
 
 async function init() {
   bindEvents();
-  await Promise.all([refreshStatus(), loadDocuments()]);
+  await Promise.all([refreshStatus(), loadDocuments(), loadBatchHistory()]);
 }
 
 init();

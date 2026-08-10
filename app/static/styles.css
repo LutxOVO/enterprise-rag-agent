@@ -225,6 +225,10 @@ h3 {
   margin-bottom: 14px;
 }
 
+.compact-header {
+  margin-bottom: 10px;
+}
+
 .two-column,
 .qa-layout {
   display: grid;
@@ -315,6 +319,18 @@ textarea:focus {
 
 .button.subtle {
   color: var(--muted);
+}
+
+.button.danger-text {
+  border-color: #fecaca;
+  color: var(--danger);
+}
+
+.document-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 150px;
 }
 
 .button:disabled {
@@ -416,6 +432,54 @@ td {
 
 tr:last-child td {
   border-bottom: 0;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.status-indexed,
+.status-completed {
+  border-color: #b7e4dc;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.status-duplicate,
+.status-skipped {
+  border-color: #bfdbfe;
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.status-failed,
+.status-partial_success {
+  border-color: #fecaca;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.status-parsing,
+.status-splitting,
+.status-embedding,
+.status-saving,
+.status-running,
+.status-queued {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: var(--warning);
+}
+
+.error-text {
+  color: var(--danger);
+  font-size: 12px;
 }
 
 .sources {

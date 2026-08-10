@@ -4,7 +4,7 @@ from typing import Any
 from app.core.config import settings
 from app.rag.vector_store import ChromaVectorStore
 from app.schemas import ClearVectorStoreResponse, StatusResponse, VectorChunkInfo, VectorChunkListResponse
-from app.storage.database import clear_documents, clear_messages, count_documents
+from app.storage.database import clear_documents, clear_messages, clear_upload_tracking, count_documents
 
 
 def get_system_status() -> StatusResponse:
@@ -41,6 +41,7 @@ def clear_knowledge_base(delete_files: bool = True) -> ClearVectorStoreResponse:
     removed_chunks = vector_store.clear()
     removed_documents = clear_documents()
     removed_messages = clear_messages()
+    clear_upload_tracking()
 
     if delete_files:
         _reset_local_dirs()

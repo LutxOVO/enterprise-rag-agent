@@ -71,7 +71,7 @@
               <h3>上传文档</h3>
               <label class="field">
                 <span>选择文件</span>
-                <input id="uploadFile" type="file" />
+                <input id="uploadFile" type="file" multiple />
               </label>
               <button class="button primary" id="uploadBtn" type="submit">
                 <span class="button-icon">传</span> 上传并向量化
@@ -94,6 +94,60 @@
           </div>
 
           <div class="panel">
+            <div class="section-header compact-header">
+              <div>
+                <h3>最近批次</h3>
+                <p>批次记录会保存在 SQLite；失败文件可以单独重试。</p>
+              </div>
+              <button class="button subtle" id="refreshBatchHistoryBtn" type="button">
+                <span class="button-icon">历</span> 刷新批次
+              </button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Batch ID</th>
+                    <th>状态</th>
+                    <th>文件统计</th>
+                    <th>耗时</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="batchHistoryTable"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="section-header compact-header">
+              <div>
+                <h3>批次文件明细</h3>
+                <p>上传完成后查看每个文件停在哪个阶段，以及失败原因。</p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>文件名</th>
+                    <th>状态</th>
+                    <th>chunk</th>
+                    <th>耗时</th>
+                    <th>失败阶段</th>
+                    <th>错误 / Document ID</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="batchItemsTable">
+                  <tr><td colspan="7" class="empty-state">尚未选择批次。</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
             <h3>已上传文档</h3>
             <div class="table-wrap">
               <table>
@@ -104,6 +158,7 @@
                     <th>切片数</th>
                     <th>创建时间</th>
                     <th>Document ID</th>
+                    <th>操作</th>
                   </tr>
                 </thead>
                 <tbody id="documentsTable"></tbody>
@@ -132,6 +187,23 @@
                   <input id="qaTopK" type="number" min="1" max="10" value="3" />
                 </label>
               </div>
+              <div class="inline-fields">
+                <label class="field">
+                  <span>retrieval_strategy</span>
+                  <select id="retrievalStrategy">
+                    <option value="dense">dense：纯向量检索</option>
+                    <option value="hybrid">hybrid：向量 + BM25 + RRF</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>document_id 过滤（可选）</span>
+                  <input id="documentIdFilter" type="text" placeholder="只检索一个文档" />
+                </label>
+                <label class="field">
+                  <span>filename 过滤（可选）</span>
+                  <input id="filenameFilter" type="text" placeholder="例如 handbook.md" />
+                </label>
+              </div>
               <label class="field">
                 <span>问题</span>
                 <textarea id="questionInput" rows="7" placeholder="例如：员工报销需要准备哪些材料？"></textarea>
@@ -139,6 +211,7 @@
               <div class="button-row">
                 <button class="button primary" id="askBtn" type="button">普通 RAG(2-Step)</button>
                 <button class="button" id="streamBtn" type="button">流式 RAG(2-Step)</button>
+                <button class="button" id="langGraphBtn" type="button">LangGraph Agent</button>
                 <button class="button accent" id="dynamicBtn" type="button">Dynamic RAG(Agentic)</button>
               </div>
             </form>
@@ -191,15 +264,29 @@
             <form class="panel" id="ragasForm">
               <label class="field">
                 <span>dataset_path</span>
-                <input id="datasetPath" type="text" value="eval_data/ragas_eval_dataset.json" />
+                <input id="datasetPath" type="text" value="eval_data/ai_agents_in_depth_eval_dataset.json" />
               </label>
+                <label class="field">
+                  <span>retrieval_mode</span>
+                <select id="retrievalMode">
+                  <option value="baseline">baseline：原问题直接检索</option>
+                  <option value="hyde_rewrite">hyde_rewrite：Query Rewrite + HyDE</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>retrieval_strategy</span>
+                  <select id="ragasRetrievalStrategy">
+                    <option value="dense">dense：纯向量检索</option>
+                    <option value="hybrid">hybrid：向量 + BM25 + RRF</option>
+                  </select>
+                </label>
               <label class="field">
                 <span>samples_output_path</span>
-                <input id="samplesOutputPath" type="text" value="eval_outputs/ragas_samples.json" />
+                <input id="samplesOutputPath" type="text" value="eval_outputs/ragas_samples_baseline.json" />
               </label>
               <label class="field">
                 <span>result_output_path</span>
-                <input id="resultOutputPath" type="text" value="eval_outputs/ragas_result.json" />
+                <input id="resultOutputPath" type="text" value="eval_outputs/ragas_result_baseline.json" />
               </label>
               <div class="inline-fields">
                 <label class="field small-field">
@@ -231,6 +318,6 @@
       </main>
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=rag-debug-path-only-20260624"></script>
   </body>
 </html>

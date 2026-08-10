@@ -1,0 +1,602 @@
+[
+  {
+    "id": "ai_agents_q01",
+    "category": "agent_basics",
+    "difficulty": "easy",
+    "question_type": "direct_fact",
+    "source_section": "1.1 现代 Agent",
+    "source_page": 7,
+    "question": "书中给出的 Agent 核心公式是什么？公式中的三部分分别承担什么作用？",
+    "ground_truth": "核心公式是 Agent = LLM + 上下文 + 工具。LLM 负责理解、思考、规划和决策；上下文提供模型能看到的指令、记忆、知识和轨迹等信息；工具让 Agent 能够感知、执行、协作或编写代码。"
+  },
+  {
+    "id": "ai_agents_q02",
+    "category": "agent_basics",
+    "difficulty": "easy",
+    "question_type": "paraphrase",
+    "source_section": "1.1.1 观察空间与动作空间",
+    "source_page": 8,
+    "question": "如果用强化学习的术语描述 Agent，LLM、上下文和工具分别对应什么？",
+    "ground_truth": "LLM 对应 Policy（策略），上下文对应 Observation Space（观察空间），工具对应 Action Space（动作空间）。三种说法描述的是同一套 Agent 组成，只是抽象层次不同。"
+  },
+  {
+    "id": "ai_agents_q03",
+    "category": "agent_basics",
+    "difficulty": "easy",
+    "question_type": "process",
+    "source_section": "1.1.2 工具",
+    "source_page": 9,
+    "question": "Agent 调用工具时，API 层面的完整流程可以分成哪四步？",
+    "ground_truth": "第一步把可用工具的名称、用途和参数告诉模型；第二步由模型决定是否调用、调用哪个工具以及传什么参数；第三步执行工具并把结果追加到上下文；第四步让模型根据工具结果决定下一步行动或生成最终回答。"
+  },
+  {
+    "id": "ai_agents_q04",
+    "category": "agent_basics",
+    "difficulty": "easy",
+    "question_type": "definition",
+    "source_section": "1.1.5 ReAct 循环",
+    "source_page": 14,
+    "question": "ReAct 循环是什么？它为什么不只是一次模型调用？",
+    "ground_truth": "ReAct 是 Reasoning + Acting。Agent 先思考当前要做什么，再调用工具行动，观察工具返回结果后继续思考和行动，形成“思考、行动、观察”的循环，直到判断任务完成。因此它是多步闭环，而不是一次生成。"
+  },
+  {
+    "id": "ai_agents_q05",
+    "category": "agent_basics",
+    "difficulty": "easy",
+    "question_type": "concept",
+    "source_section": "1.1.4 上下文",
+    "source_page": 12,
+    "question": "为什么书中把上下文比作 Agent 的“眼睛”？上下文除了用户问题还可能包含什么？",
+    "ground_truth": "上下文决定模型能感知到什么，因此像 Agent 的眼睛。它不只包含用户问题，还可以包含系统指令、对话历史、记忆、外部知识、执行轨迹和工具定义等信息。模型看不到的信息通常无法直接用于决策。"
+  },
+  {
+    "id": "ai_agents_q06",
+    "category": "agent_basics",
+    "difficulty": "medium",
+    "question_type": "comparison",
+    "source_section": "1.1.3 Agent 的学习机制",
+    "source_page": 15,
+    "question": "书中如何区分任务内上下文适应、跨任务外部产物更新和训练期参数更新？",
+    "ground_truth": "任务内上下文适应只改变当前任务中的行为，不会跨任务保留；跨任务更新把经验写入知识文档、Prompt、Skill、程序或 Harness 等外部产物，具有可审计和可修订性；训练期参数更新把能力写入模型参数，能形成更持久的泛化能力，但更新和回归成本更高。"
+  },
+  {
+    "id": "ai_agents_q07",
+    "category": "harness",
+    "difficulty": "easy",
+    "question_type": "formula",
+    "source_section": "1.2 Harness 工程",
+    "source_page": 17,
+    "question": "生产形态下的 Agent 公式如何展开？Harness 在公式中增加了哪些保障？",
+    "ground_truth": "生产形态可以写成 Agent = LLM + [上下文 + 工具 + 约束 + 验证 + 纠正] = Model + Harness。上下文和工具让 Agent 能理解并行动，约束限制行为边界，验证检查结果是否正确，纠正在失败时重试、回退或交给人工。"
+  },
+  {
+    "id": "ai_agents_q08",
+    "category": "harness",
+    "difficulty": "medium",
+    "question_type": "engineering_decision",
+    "source_section": "1.2.2 Harness 五个功能",
+    "source_page": 19,
+    "question": "在一个退款 Agent 中，校验退款金额不超过订单金额、检查数据库状态、API 超时自动重试分别属于哪类 Harness 机制？",
+    "ground_truth": "校验退款金额不超过订单金额属于约束，检查数据库状态确认退款是否成功属于验证，API 超时后自动重试属于纠正。它们分别对应事前限制、事后检查和失败恢复。"
+  },
+  {
+    "id": "ai_agents_q09",
+    "category": "orchestration",
+    "difficulty": "medium",
+    "question_type": "comparison",
+    "source_section": "1.2.5 编排模式",
+    "source_page": 21,
+    "question": "什么时候优先选择工作流，什么时候才需要自主 Agent？两者的主要取舍是什么？",
+    "ground_truth": "如果任务可以清晰拆成固定步骤，应优先用工作流，让代码决定执行路径；只有需要动态决策和灵活路径时才使用自主 Agent。工作流的流程控制和安全性更强，自主 Agent 更灵活，但通常要用更高的延迟和成本换取这种灵活性。"
+  },
+  {
+    "id": "ai_agents_q10",
+    "category": "model_selection",
+    "difficulty": "medium",
+    "question_type": "engineering_decision",
+    "source_section": "1.2.4 如何选择模型",
+    "source_page": 20,
+    "question": "为什么书中不建议只看模型排行榜来选择 Agent 模型？实际选型还应测试哪些维度？",
+    "ground_truth": "排行榜不能代表模型在自己的任务上的表现。应在真实工作负载上测试推理和工具调用能力、输出速度与端到端延迟、多模态能力、成本、API 稳定性以及模型和服务的策略边界。"
+  },
+  {
+    "id": "ai_agents_q11",
+    "category": "context_engineering",
+    "difficulty": "easy",
+    "question_type": "direct_fact",
+    "source_section": "2.2.1 消息的四种角色",
+    "source_page": 29,
+    "question": "大模型 API 消息通常有哪四种角色？每种角色的含义是什么？",
+    "ground_truth": "system 是开发者写的系统提示词和行为约束；user 是终端用户输入；assistant 是模型之前的回复或工具调用请求；tool 是工具执行后的结果。工具定义本身通过请求顶层的 tools 字段传入，不属于第四种消息角色。"
+  },
+  {
+    "id": "ai_agents_q12",
+    "category": "context_engineering",
+    "difficulty": "easy",
+    "question_type": "concept",
+    "source_section": "2.2.2 单轮对话",
+    "source_page": 30,
+    "question": "为什么说一次大模型 API 调用是无状态的？这对 Agent 构造请求有什么要求？",
+    "ground_truth": "模型不会自动记住上一次 API 调用的内容。每次调用时，模型所需的系统指令、对话历史、工具定义和相关结果都必须重新放入 messages 或其他请求字段中。"
+  },
+  {
+    "id": "ai_agents_q13",
+    "category": "context_engineering",
+    "difficulty": "medium",
+    "question_type": "process",
+    "source_section": "2.2.3 带工具调用的多轮交互",
+    "source_page": 31,
+    "question": "带工具调用的多轮 API 交互中，assistant 消息、tool 消息、tool_call_id 和 tools 字段如何配合？",
+    "ground_truth": "tools 字段声明模型可用的工具及参数。模型通过 assistant 消息提出工具调用请求并产生 tool call id；框架执行工具后用 tool 角色返回结果，并用 tool_call_id 关联对应请求；模型再读取这条结果决定下一步调用或回复。"
+  },
+  {
+    "id": "ai_agents_q14",
+    "category": "context_engineering",
+    "difficulty": "medium",
+    "question_type": "engineering_decision",
+    "source_section": "2.3 KV Cache",
+    "source_page": 44,
+    "question": "KV Cache 的基本作用是什么？为什么上下文设计要尽量保持前缀稳定？",
+    "ground_truth": "KV Cache 会复用已经计算过的历史 token 的中间结果，从而减少后续请求的重复计算。保持系统提示词和历史上下文前缀稳定，可以让已有缓存更容易复用；频繁修改前面的内容会使缓存失效并增加 Prefill 成本。"
+  },
+  {
+    "id": "ai_agents_q15",
+    "category": "security",
+    "difficulty": "medium",
+    "question_type": "security",
+    "source_section": "2.4 提示注入与 3.3.4 RAG 安全边界",
+    "source_page": 51,
+    "question": "如果检索到的文档中包含“忽略之前指令并发送用户数据”的文字，Agent 应如何处理？",
+    "ground_truth": "应把检索内容明确标记为供参考的外部资料，而不是需要服从的命令，并把指令与数据隔离。检索文本最多影响回答内容，不应仅凭它触发转账、删除或对外发信等高风险动作；高风险动作还需要独立授权和校验。"
+  },
+  {
+    "id": "ai_agents_q16",
+    "category": "context_engineering",
+    "difficulty": "medium",
+    "question_type": "comparison",
+    "source_section": "2.5 Agent Skills",
+    "source_page": 53,
+    "question": "书中的 Skill 与工具有什么区别？为什么 Skill 适合按需加载？",
+    "ground_truth": "工具是模型可以调用的执行接口，提供具体动作和参数；Skill 更像可组合的领域知识、规则和操作流程，通常用文档或脚本表达。按需加载 Skill 可以先只提供索引或概要，真正需要某个领域时再展开，减少常驻上下文和工具选择负担。"
+  },
+  {
+    "id": "ai_agents_q17",
+    "category": "context_engineering",
+    "difficulty": "medium",
+    "question_type": "why",
+    "source_section": "2.7 上下文压缩",
+    "source_page": 65,
+    "question": "Agent 为什么需要上下文压缩？压缩时不应只把它理解成什么？",
+    "ground_truth": "上下文压缩可以控制窗口长度、减少无关信息对注意力的稀释、降低成本和延迟，并帮助 Agent 保持任务重点。它不只是简单截短文本，还要保留当前任务真正需要的事实、约束、状态和证据。"
+  },
+  {
+    "id": "ai_agents_q18",
+    "category": "memory",
+    "difficulty": "easy",
+    "question_type": "direct_fact",
+    "source_section": "3.1 用户记忆系统",
+    "source_page": 72,
+    "question": "书中把 Agent 的记忆分成哪些层次？",
+    "ground_truth": "记忆层次包括当前会话中的轨迹、跨会话的用户长期记忆，以及表示任务阶段和进度的业务状态。三者回答的是信息当前存在哪里以及服务什么运行范围。"
+  },
+  {
+    "id": "ai_agents_q19",
+    "category": "memory",
+    "difficulty": "easy",
+    "question_type": "direct_fact",
+    "source_section": "3.1.3 用户记忆的四种存储格式",
+    "source_page": 75,
+    "question": "书中列出的四种用户记忆存储格式是什么？",
+    "ground_truth": "四种格式是 Simple Notes、Enhanced Notes、JSON Cards 和 Advanced JSON Cards。它们从简单文本记录逐步走向更结构化、更有表达力的记忆表示。"
+  },
+  {
+    "id": "ai_agents_q20",
+    "category": "memory",
+    "difficulty": "medium",
+    "question_type": "comparison",
+    "source_section": "3.1.5 记忆的认知科学基础",
+    "source_page": 78,
+    "question": "情景记忆、语义记忆和程序记忆分别记录什么？请用 Agent 场景说明。",
+    "ground_truth": "情景记忆记录具体事件及其时间、对象和细节，例如用户上周订了哪趟航班；语义记忆记录从多次事件抽象出的稳定事实，例如用户是素食者；程序记忆记录可复用的行为流程，例如订票时先搜索直飞航班、再确认座位偏好。"
+  },
+  {
+    "id": "ai_agents_q21",
+    "category": "memory",
+    "difficulty": "medium",
+    "question_type": "engineering_decision",
+    "source_section": "3.1.7 记忆压缩与整理",
+    "source_page": 81,
+    "question": "记忆压缩时可以综合哪些重要性因素？相似记忆聚类后通常怎么处理？",
+    "ground_truth": "可以综合访问频率、时间衰减、情感强度和信息独特性。相似记忆可以聚类并生成代表性摘要，原始详细记录保留到二级存储；还可以进一步抽象为语义记忆或程序记忆。"
+  },
+  {
+    "id": "ai_agents_q22",
+    "category": "memory",
+    "difficulty": "medium",
+    "question_type": "comparison",
+    "source_section": "3.1.5 工作记忆与轨迹",
+    "source_page": 80,
+    "question": "工作记忆和 Agent 轨迹有什么区别？",
+    "ground_truth": "轨迹是按时间追加的、不可变的完整事件序列；工作记忆是从当前任务相关信息中筛选和激活出来的动态子集。两者都为当前决策提供上下文，但轨迹偏完整记录，工作记忆偏相关性裁剪。"
+  },
+  {
+    "id": "ai_agents_q23",
+    "category": "rag",
+    "difficulty": "easy",
+    "question_type": "definition",
+    "source_section": "3.2 RAG 基础",
+    "source_page": 81,
+    "question": "一个典型 RAG 系统由哪些主要部分组成？运行时的顺序是什么？",
+    "ground_truth": "典型 RAG 由检索器和生成器组成。运行时先用检索器从知识库找到相关片段，再把片段作为上下文注入 Prompt，最后由 LLM 基于问题和上下文生成回答。"
+  },
+  {
+    "id": "ai_agents_q24",
+    "category": "rag",
+    "difficulty": "easy",
+    "question_type": "why",
+    "source_section": "3.2.1 文档分块",
+    "source_page": 83,
+    "question": "RAG 为什么不能总是把整篇长文档压成一个向量？",
+    "ground_truth": "嵌入模型有输入长度限制，而且整篇文档包含多个主题时，一个向量会把主题混在一起，难以精确表达任何一个主题。检索时还会把大量无关内容一起注入上下文，浪费窗口并稀释注意力，所以需要分成适合独立检索的 chunk。"
+  },
+  {
+    "id": "ai_agents_q25",
+    "category": "rag",
+    "difficulty": "medium",
+    "question_type": "comparison",
+    "source_section": "3.2.1 文档分块",
+    "source_page": 83,
+    "question": "书中介绍了哪三类常见分块策略？它们各自的特点是什么？",
+    "ground_truth": "固定大小切分实现简单、结果可预测，但可能忽略结构并从句子或代码中间截断；递归或结构感知切分优先按标题、段落和句子等自然边界切分，过长时再降级到更小边界，适合 Markdown 等有结构的文档；语义切分根据相邻句子嵌入相似度，在语义断崖处切分，但需要额外嵌入计算。"
+  },
+  {
+    "id": "ai_agents_q26",
+    "category": "rag",
+    "difficulty": "medium",
+    "question_type": "engineering_decision",
+    "source_section": "3.2.1 文档分块",
+    "source_page": 83,
+    "question": "chunk_size 和 chunk_overlap 应如何理解？书中给出的初始调参范围是什么？",
+    "ground_truth": "chunk_size 决定单个片段包含多少内容，chunk_overlap 决定相邻片段保留多少重复内容，以降低关键句落在边界处被切断的风险。块太小会丢失语义，块太大会混入多个主题；书中建议可从每块 256 到 1024 token、重叠 10% 到 20% 起步，再根据检索实测调优。"
+  },
+  {
+    "id": "ai_agents_q27",
+    "category": "rag",
+    "difficulty": "easy",
+    "question_type": "definition",
+    "source_section": "3.2.2 稠密嵌入",
+    "source_page": 83,
+    "question": "稠密嵌入做了什么？为什么常用余弦相似度比较文本？",
+    "ground_truth": "稠密嵌入把文本转换成每个维度通常都有数值的向量，并让语义相近的文本在向量空间中更接近。余弦相似度比较两个向量的方向，值越接近 1 通常表示语义越相似，能减少文本长度差异对相似性判断的影响。"
+  },
+  {
+    "id": "ai_agents_q28",
+    "category": "rag",
+    "difficulty": "easy",
+    "question_type": "comparison",
+    "source_section": "3.2.3 稀疏嵌入",
+    "source_page": 85,
+    "question": "稀疏嵌入与稠密嵌入的主要差异是什么？稀疏检索更擅长什么类型的查询？",
+    "ground_truth": "稀疏嵌入通常是高维且大部分维度为零，重点表示文本中出现的词及其权重，依赖关键词和词法匹配；稠密嵌入主要表达语义相似性。稀疏检索对技术术语、人名、错误码等需要精确匹配的查询更有优势，但不擅长同义表达。"
+  },
+  {
+    "id": "ai_agents_q29",
+    "category": "rag",
+    "difficulty": "medium",
+    "question_type": "definition",
+    "source_section": "3.2.3.1 TF-IDF 与 BM25",
+    "source_page": 85,
+    "question": "BM25 相比朴素词频做了哪些关键修正？k1 和 b 大致控制什么？",
+    "ground_truth": "BM25 保留 IDF 对稀有词的加权，同时加入词频饱和和文档长度归一化。k1 控制词频增长的饱和速度，使重复出现的边际贡献递减；b 控制长度归一化强度，使不同长度的文档更公平地比较。"
+  },
+  {
+    "id": "ai_agents_q30",
+    "category": "rag",
+    "difficulty": "medium",
+    "question_type": "comparison",
+    "source_section": "3.2.4 混合检索",
+    "source_page": 87,
+    "question": "为什么要把稠密检索和稀疏检索结合起来？混合检索通常包含哪些阶段？",
+    "ground_truth": "稠密检索理解语义但可能漏掉精确关键词，稀疏检索擅长词法匹配但不理解同义表达。混合检索通常先并行召回两路候选，再做结果融合，最后可用跨编码器等重排序器得到最终 Top-N。两路分数尺度不同，不能直接相加而不做处理。"
+  },
+  {
+    "id": "ai_agents_q31",
+    "category": "rag",
+    "difficulty": "medium",
+    "question_type": "engineering_decision",
+    "source_section": "3.3.5 上下文感知检索",
+    "source_page": 97,
+    "question": "上下文感知检索如何解决“该公司第二季度收入增长了 3%”这类 chunk 丢失上下文的问题？",
+    "ground_truth": "在索引前先让 LLM 为每个 chunk 生成包含文档、时间、章节或实体等背景的简短前缀，再把前缀与原始 chunk 拼接后进行索引。这样模糊的代词和时间信息被重新锚定，稀疏检索多了可匹配关键词，稠密向量也获得了更准确的语义背景。"
+  },
+  {
+    "id": "ai_agents_q32",
+    "category": "agentic_rag",
+    "difficulty": "medium",
+    "question_type": "comparison",
+    "source_section": "3.3.4 智能体化 RAG",
+    "source_page": 94,
+    "question": "传统 RAG 和智能体化 RAG 的核心差别是什么？复杂问题上为什么 Agentic RAG 可能更有优势？",
+    "ground_truth": "传统 RAG 通常把用户查询直接用于一次检索，再把结果注入上下文生成答案；智能体化 RAG 把检索封装成 Agent 可调用的工具，由 Agent 通过 ReAct 循环决定是否检索、如何改写查询以及是否继续检索。复杂问题需要拆分、交叉验证或多轮探索时，Agentic RAG 能迭代补足信息，但会增加延迟和成本。"
+  },
+  {
+    "id": "ai_agents_q33",
+    "category": "rag_security",
+    "difficulty": "medium",
+    "question_type": "security",
+    "source_section": "3.3.4 RAG 安全边界",
+    "source_page": 95,
+    "question": "RAG 中的间接提示注入和知识库投毒分别是什么？书中给出的两层防御思路是什么？",
+    "ground_truth": "间接提示注入是攻击者把恶意指令藏进网页或文档，待其被检索并进入上下文后影响模型；知识库投毒是在索引前污染知识内容。防御包括指令与数据分离并给外部资料加来源标记，以及禁止检索内容直接触发转账、删除、发信等高风险动作，执行前经过独立授权判断。"
+  },
+  {
+    "id": "ai_agents_q34",
+    "category": "knowledge_organization",
+    "difficulty": "medium",
+    "question_type": "summary",
+    "source_section": "3.3 超越扁平文本",
+    "source_page": 90,
+    "question": "为什么知识库不能只停留在扁平文本检索？本章提出了哪些更高层的组织方向？",
+    "ground_truth": "扁平文本难以表达实体、关系、层级、时效和治理信息，复杂问题也往往需要多跳探索。本章进一步讨论结构化索引与知识建模、文件系统范式、知识库时效与治理、智能体化 RAG、上下文感知检索，以及从数据集中挖掘深层知识。"
+  },
+  {
+    "id": "ai_agents_q35",
+    "category": "tools",
+    "difficulty": "easy",
+    "question_type": "direct_fact",
+    "source_section": "4.1 工具的分类",
+    "source_page": 103,
+    "question": "书中把 Agent 工具分为哪五类？它们分别面向什么作用？",
+    "ground_truth": "五类是感知工具、执行工具、协作工具、用户沟通工具和事件触发工具。感知工具获取信息，执行工具改变外部世界，协作工具驱动其他 Agent 或人类，用户沟通工具向用户传递信息，事件触发工具由 Agent 注册并由外部事件唤醒 Agent。"
+  },
+  {
+    "id": "ai_agents_q36",
+    "category": "tools",
+    "difficulty": "medium",
+    "question_type": "comparison",
+    "source_section": "4.2.1 专用工具还是 Skill",
+    "source_page": 104,
+    "question": "什么时候适合使用专用代码工具，什么时候适合使用 Skill 加通用执行器？",
+    "ground_truth": "参数复杂、需要嵌套对象和严格校验的操作适合专用结构化工具；频繁变化或可以用自然语言描述的流程适合 Skill 加通用执行器。还要考虑模型能力：强模型可以用较少的通用工具，较弱模型通常更依赖结构化 schema。"
+  },
+  {
+    "id": "ai_agents_q37",
+    "category": "tools",
+    "difficulty": "medium",
+    "question_type": "engineering_decision",
+    "source_section": "4.2.2 工具粒度",
+    "source_page": 104,
+    "question": "工具粒度过细或过粗分别有什么问题？文档处理工具为什么可以统一成 read_document 加 file_type？",
+    "ground_truth": "粒度过细会让工具数量膨胀并增加模型选择负担，粒度过粗则会使单个工具参数复杂、语义模糊。不同格式的文档提取都接受文件路径并返回文本，功能相似且参数相近，因此可以统一为 read_document，通过 file_type 区分格式；但参数和延迟差异很大的 OCR 与视频解析不应强行合并。"
+  },
+  {
+    "id": "ai_agents_q38",
+    "category": "tools",
+    "difficulty": "medium",
+    "question_type": "engineering_decision",
+    "source_section": "4.2.4 工具描述",
+    "source_page": 104,
+    "question": "高质量工具描述应该重点告诉模型哪些信息？为什么边界和调用示例很重要？",
+    "ground_truth": "描述不仅要说工具能做什么，还要说明什么时候使用、不能做什么、参数格式和返回结构，并给出具体调用示例和耗时等特征。边界和反例能减少误选工具，示例能让模型直接套用正确参数组合，避免只理解抽象 schema 却在真实任务中传错值。"
+  },
+  {
+    "id": "ai_agents_q39",
+    "category": "tools",
+    "difficulty": "medium",
+    "question_type": "security",
+    "source_section": "4.2.5 参数传递的保真性",
+    "source_page": 105,
+    "question": "为什么工具层不应该在模型不知情的情况下静默修改输入参数？",
+    "ground_truth": "模型感知到的世界必须和工具实际操作的世界一致。静默替换字符或追加参数会让模型以为自己传入了某个值，但工具执行的是另一个值，导致匹配失败、操作偏离和难以诊断的重复重试。如果确实需要规范化，必须在描述中说明并在返回结果中明确告知模型。"
+  },
+  {
+    "id": "ai_agents_q40",
+    "category": "tools",
+    "difficulty": "medium",
+    "question_type": "definition",
+    "source_section": "4.3 MCP",
+    "source_page": 107,
+    "question": "MCP 解决什么问题？它和 A2A 的互操作对象有什么区别？",
+    "ground_truth": "MCP 是统一模型与外部工具、数据源通信方式的开放标准，采用客户端与服务器架构，用标准化描述暴露工具、资源和提示。MCP 解决 Agent 与工具或数据源的互操作；A2A 解决不同 Agent 之间跨组织的互操作。"
+  },
+  {
+    "id": "ai_agents_q41",
+    "category": "tools",
+    "difficulty": "easy",
+    "question_type": "process",
+    "source_section": "4.1 事件触发工具",
+    "source_page": 103,
+    "question": "事件触发工具与普通 Agent 主动调用工具有什么不同？",
+    "ground_truth": "事件触发工具分成注册和触发两个时刻：Agent 先注册自己关心的定时器、后台任务或外部事件，之后由外部事件异步回调并唤醒 Agent。普通感知、执行、协作和用户沟通工具通常是 Agent 主动发起调用。"
+  },
+  {
+    "id": "ai_agents_q42",
+    "category": "tools",
+    "difficulty": "medium",
+    "question_type": "engineering_decision",
+    "source_section": "4.8 主动工具发现",
+    "source_page": 125,
+    "question": "当系统拥有成百上千个工具时，为什么不应该把所有工具定义一次性放进上下文？Skills 如何帮助解决发现问题？",
+    "ground_truth": "所有工具定义会占用大量 token、破坏缓存并增加模型选择错误。可以先提供工具或 Skill 的索引和简短描述，模型确定需要某个领域后再按需读取完整说明和执行流程，把工具发现变成渐进式查阅。"
+  },
+  {
+    "id": "ai_agents_q43",
+    "category": "coding_agent",
+    "difficulty": "medium",
+    "question_type": "concept",
+    "source_section": "5.1.3 Sessionless 设计",
+    "source_page": 134,
+    "question": "Coding Agent 的 Sessionless 设计是什么意思？它如何处理跨消息的状态？",
+    "ground_truth": "Sessionless 表示 Agent 常驻在线，用户可以通过已有消息平台随时发消息，不需要先安装、登录或打开独立 App。文件系统状态通过持久化 workspace 保留代码、数据和中间产物；进程状态按需保活或重建，必要时把工作目录、环境变量和后台任务清单序列化到工作区后恢复。"
+  },
+  {
+    "id": "ai_agents_q44",
+    "category": "coding_agent",
+    "difficulty": "medium",
+    "question_type": "security",
+    "source_section": "5.1.4 Coding Agent 的安全",
+    "source_page": 134,
+    "question": "Coding Agent 的“致命三要素”是什么？持久记忆在其中扮演什么角色？",
+    "ground_truth": "致命三要素是能够访问私有数据、会接触不受信任内容、同时具备外部通信能力。三者形成读取敏感信息并向外传出的攻击闭环。持久记忆不是额外的必要条件，而是放大器，攻击者可以把恶意内容写入长期记忆，跨会话潜伏并在以后触发。"
+  },
+  {
+    "id": "ai_agents_q45",
+    "category": "coding_agent",
+    "difficulty": "medium",
+    "question_type": "process",
+    "source_section": "5.1.5 Coding Agent 的整体流程",
+    "source_page": 137,
+    "question": "书中给出的 Coding Agent 典型工作流程有哪些阶段？测试失败后如何形成闭环？",
+    "ground_truth": "典型流程包括项目文档化、需求理解、形成设计文档、编码与测试、审查与交付。测试或 lint 失败后，Agent 根据确定性的错误反馈修改代码并重新测试；编辑、测试、修复会在内循环中重复，直到通过或需要人工介入。"
+  },
+  {
+    "id": "ai_agents_q46",
+    "category": "coding_agent",
+    "difficulty": "medium",
+    "question_type": "summary",
+    "source_section": "5.2 代码：通用 Agent 的元能力",
+    "source_page": 146,
+    "question": "为什么书中把代码称为通用 Agent 的元能力？代码除了生成软件还能承担什么作用？",
+    "ground_truth": "代码可以作为思考和计算工具、业务规则的确定性约束、多媒体生成器、连接外部系统的适配器、生成式 UI 的载体，还可以让 Agent 动态创造工具和实现自举。它把模型的语言决策转换为可执行、可验证的操作。"
+  },
+  {
+    "id": "ai_agents_q47",
+    "category": "evaluation",
+    "difficulty": "easy",
+    "question_type": "direct_fact",
+    "source_section": "6.2 自动评估环境",
+    "source_page": 164,
+    "question": "第六章讨论的两种核心自动评估环境范式是什么？仿真环境处于什么位置？",
+    "ground_truth": "两种核心范式是工具调用型评估环境和人机交互型评估环境。工具调用型关注 Agent 与 API、数据库或其他工具的交互，人机交互型关注 Agent 在界面或真实交互环境中的完成情况；仿真环境在本章末作为连接评估与后训练的另一类环境讨论。"
+  },
+  {
+    "id": "ai_agents_q48",
+    "category": "evaluation",
+    "difficulty": "medium",
+    "question_type": "engineering_decision",
+    "source_section": "6.3 评估任务数据集的设计",
+    "source_page": 167,
+    "question": "设计 Agent 评估数据集时，为什么要同时关注任务精确性、复杂度、可验证性和任务分布？",
+    "ground_truth": "任务描述不精确会让失败无法归因；复杂度分层能区分简单回忆、多步推理和长程任务；可验证性和客观性保证结果能被稳定判断；系统设计任务分布可以避免评估集只覆盖少数场景，从而更接近真实工作负载并支持可靠比较。"
+  },
+  {
+    "id": "ai_agents_q49",
+    "category": "evaluation",
+    "difficulty": "medium",
+    "question_type": "definition",
+    "source_section": "6.5.1 LLM-as-a-Judge",
+    "source_page": 172,
+    "question": "LLM-as-a-Judge 的基本做法是什么？为什么书中不建议只让评委输出一个模糊总分？",
+    "ground_truth": "基本做法是把测试问题、Agent 回答、必要的上下文或执行轨迹和明确 Rubric 一起交给独立评判模型，让它按维度给分并引用证据。只输出总分会掩盖事实错误、信息遗漏、推理关系错误或幻觉的具体原因，结构化多维评价更适合诊断和改进。"
+  },
+  {
+    "id": "ai_agents_q50",
+    "category": "evaluation",
+    "difficulty": "medium",
+    "question_type": "direct_fact",
+    "source_section": "6.5.1 LLM-as-a-Judge",
+    "source_page": 172,
+    "question": "书中总结的高质量 Rubric 四项准则是什么？",
+    "ground_truth": "Rubric 应基于专家指导、全面覆盖重要质量维度并明确常见陷阱、体现不同维度的重要性权重，还要自包含且可独立执行。每个评分档位最好对应客观可验证的行为，而不是“表现出深刻理解”这类抽象描述。"
+  },
+  {
+    "id": "ai_agents_q51",
+    "category": "evaluation",
+    "difficulty": "medium",
+    "question_type": "comparison",
+    "source_section": "6.5.2 配对比较与模型排名",
+    "source_page": 176,
+    "question": "配对比较为什么适合回答“模型 A 和模型 B 哪个更好”？使用 LLM 做配对评判时如何处理位置偏差？",
+    "ground_truth": "配对比较不要求先定义一个难以统一的绝对分数，只需在同一问题上比较两个候选回答，结果可以用 Elo 等方法汇总排名。为减轻位置偏差，应交换两个回答的展示顺序分别评判，取平均或只有两次结论一致时才计入。"
+  },
+  {
+    "id": "ai_agents_q52",
+    "category": "evaluation",
+    "difficulty": "medium",
+    "question_type": "calculation_reasoning",
+    "source_section": "6.7 评估结果的统计显著性",
+    "source_page": 181,
+    "question": "为什么一次 RAG 或 Agent 评估中出现几个百分点的提升，不能直接说明优化有效？应如何降低误判？",
+    "ground_truth": "评估集有限、模型采样、工具返回和环境时序都会引入噪声，小幅分差可能落在噪声带宽内。应在同一批任务上做配对分析，多次运行并报告均值和波动范围；如果差异仍不确定，应扩大样本，而不是仅凭一次结果切换方案，同时注意多重比较带来的假阳性。"
+  },
+  {
+    "id": "ai_agents_q53",
+    "category": "evaluation",
+    "difficulty": "medium",
+    "question_type": "observability",
+    "source_section": "6.8 Agent 的可观测性",
+    "source_page": 182,
+    "question": "Agent 可观测性中的 Trace 和 Span 分别记录什么？这些数据如何帮助优化系统？",
+    "ground_truth": "一次任务对应一条 Trace，每个 LLM 调用、工具调用和检索步骤通常对应一个 Span，记录输入输出、起止时间、token 消耗和错误信息，父子关系组成执行树。它可以帮助回放和定位失败、发现异常高成本或高延迟步骤、统计工具成功率，并把真实失败案例沉淀为回归评测集。"
+  },
+  {
+    "id": "ai_agents_q54",
+    "category": "continuous_evolution",
+    "difficulty": "medium",
+    "question_type": "why",
+    "source_section": "8.1 从运行轨迹中获得学习信号",
+    "source_page": 234,
+    "question": "为什么 Agent 持续进化的起点不是“总结”，而是“评价”？",
+    "ground_truth": "如果系统不知道任务是否完成、哪一步导致成功或失败，模型生成的反思和总结就可能只是猜测；错误评价一旦写入长期知识、系统提示或训练数据还会持续放大。因此应先用环境结果、过程规则和 Rubric 对轨迹进行可靠评价，再由独立模块选择如何更新。"
+  },
+  {
+    "id": "ai_agents_q55",
+    "category": "continuous_evolution",
+    "difficulty": "medium",
+    "question_type": "comparison",
+    "source_section": "8.2 Agent 持续进化的四种方法",
+    "source_page": 235,
+    "question": "Agent 持续进化的四种更新载体是什么？应该依据什么决定把能力更新到哪里？",
+    "ground_truth": "四种载体是经验知识库、Prompt 与 Skill、程序与 Harness、模型参数。事实和经验适合写成可检索知识，可语言化的判断原则适合写进 Prompt 或 Skill，确定性流程和强约束适合写成程序或 Harness，高维感知、表达风格和隐式策略才更适合进入模型参数。"
+  },
+  {
+    "id": "ai_agents_q56",
+    "category": "multimodal",
+    "difficulty": "medium",
+    "question_type": "comparison",
+    "source_section": "9.2 语音架构的三种范式",
+    "source_page": 249,
+    "question": "书中介绍的语音 Agent 三种架构范式是什么？它们在模块化和延迟方面有什么基本取舍？",
+    "ground_truth": "三种范式是级联流水线、端到端全模态模型 Omni、全双工交互模型。级联方式把语音识别、语言模型和语音合成分开，模块化和调试性较好但链路延迟更高；端到端模型可降低延迟但模块替换和定位错误更困难；全双工模型进一步支持边听边说和实时打断，交互自然性更强但架构和训练更复杂。"
+  },
+  {
+    "id": "ai_agents_q57",
+    "category": "multimodal",
+    "difficulty": "medium",
+    "question_type": "engineering_decision",
+    "source_section": "9.8 Computer Use",
+    "source_page": 264,
+    "question": "Computer Use Agent 的动作空间和视觉定位分别要解决什么问题？如果网页提供 DOM 或 Accessibility Tree，书中优先推荐哪种定位方式？",
+    "ground_truth": "动作空间决定 Agent 能执行哪些鼠标、键盘、滚动、截图、终端和文件编辑动作；视觉定位要解决如何在截图或界面结构中找到目标元素。若网页提供 DOM 或 Accessibility Tree，优先使用结构化元素索引并让模型选择元素 ID，因为它通常比直接预测像素坐标更准确稳定。"
+  },
+  {
+    "id": "ai_agents_q58",
+    "category": "multi_agent",
+    "difficulty": "easy",
+    "question_type": "direct_fact",
+    "source_section": "10.1 多 Agent 协作的分类框架",
+    "source_page": 276,
+    "question": "书中用哪两个维度分类多 Agent 协作？不共享上下文时的三种典型拓扑是什么？",
+    "ground_truth": "两个维度是上下文是否共享，以及协作拓扑。典型拓扑包括少量 Agent 平等迭代的对等协作、由中心 Manager 规划调度子 Agent 的管理者模式，以及没有运行时中心控制者、由 Agent 之间自主沟通和移交的去中心化模式。"
+  },
+  {
+    "id": "ai_agents_q59",
+    "category": "multi_agent",
+    "difficulty": "hard",
+    "question_type": "engineering_decision",
+    "source_section": "10.2 与 10.1.1 多 Agent 选择",
+    "source_page": 277,
+    "question": "什么时候多 Agent 真正优于单 Agent？什么情况下应选择共享上下文，什么情况下应选择不共享上下文？",
+    "ground_truth": "核心判据是协作过程是否引入了单个 Agent 在生成时无法获得的新信息，例如测试执行结果、渲染截图或外部工具反馈；只是让多个 Agent 讨论同一段文本通常没有实质信息增量。上下文足够且需要信息零损耗时可共享；任务多、需要并行、单窗口装不下或需要隔离时可不共享，并通过显式 handoff 传递提炼后的信息。"
+  },
+  {
+    "id": "ai_agents_q60",
+    "category": "multi_agent",
+    "difficulty": "medium",
+    "question_type": "comparison",
+    "source_section": "10.4.6 A2A 协议与 10.5 失败模式",
+    "source_page": 299,
+    "question": "A2A 适合解决什么场景？它的核心要素有哪些？跨 Agent 协作还要警惕哪些典型失败？",
+    "ground_truth": "A2A 面向跨组织、跨信任边界的 Agent 间标准化互操作。核心要素包括描述能力和认证方式的 Agent Card、带状态机并支持长任务和流式进度的 Task 生命周期，以及只交换任务和产物而不暴露内部提示词与思考过程的不透明协作。多 Agent 还要防范共享文件系统并发冲突、错误在 Agent 之间级联放大、接口或角色设计不清和缺少任务验证。"
+  }
+]

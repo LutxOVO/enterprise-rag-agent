@@ -1,0 +1,352 @@
+[
+  {
+    "id": "q01",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "question": "员工每天几点前需要完成线上打卡？",
+    "ground_truth": "员工每天需要在 10:00 前完成线上打卡。"
+  },
+  {
+    "id": "q02",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "question": "员工报销需要准备哪些材料？",
+    "ground_truth": "员工报销需要准备发票、付款截图和报销说明。"
+  },
+  {
+    "id": "q03",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "question": "报销材料准备好之后要做什么？",
+    "ground_truth": "准备好发票、付款截图和报销说明后，需要在系统中提交申请。"
+  },
+  {
+    "id": "q04",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "question": "报销申请由谁审批？",
+    "ground_truth": "报销申请需要直属主管审批。"
+  },
+  {
+    "id": "q05",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "question": "直属主管审批通过后，财务多久完成报销处理？",
+    "ground_truth": "直属主管审批通过后，财务会在 5 个工作日内完成处理。"
+  },
+  {
+    "id": "q06",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "question": "哪些情况可以说明无法按时打卡？",
+    "ground_truth": "会议、出差或网络问题导致无法按时打卡时，可以提交补卡说明。"
+  },
+  {
+    "id": "q07",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "question": "无法按时打卡时，补卡说明什么时候提交？",
+    "ground_truth": "无法按时打卡时，需要在当天提交补卡说明。"
+  },
+  {
+    "id": "q08",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "question": "上传知识库的文档应该避免包含哪些信息？",
+    "ground_truth": "文档应避免包含敏感个人信息、客户隐私和未经授权的商业合同。"
+  },
+  {
+    "id": "q09",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "question": "长期维护的制度文档命名时要注意什么？",
+    "ground_truth": "长期维护的制度文档应在文件名中包含版本日期。"
+  },
+  {
+    "id": "q10",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "question": "知识库问答没有命中内容时，第一步检查什么？",
+    "ground_truth": "应该先检查文档是否已经上传成功。"
+  },
+  {
+    "id": "q11",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "question": "确认文档上传成功后，仍然没有命中应该怎么办？",
+    "ground_truth": "可以尝试使用更具体的问题描述。"
+  },
+  {
+    "id": "q12",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "question": "报销需要提供付款截图吗？",
+    "ground_truth": "需要，付款截图是报销需要准备的材料之一。"
+  },
+  {
+    "id": "q13",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "question": "报销说明属于报销材料吗？",
+    "ground_truth": "属于，报销说明是报销需要准备的材料之一。"
+  },
+  {
+    "id": "q14",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "question": "客户隐私可以直接上传到知识库吗？",
+    "ground_truth": "不应直接上传，知识库文档应避免包含客户隐私。"
+  },
+  {
+    "id": "q15",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "question": "未经授权的商业合同可以放入知识库吗？",
+    "ground_truth": "不应放入知识库，文档应避免包含未经授权的商业合同。"
+  },
+  {
+    "id": "q16",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "question": "补卡说明需要当天提交吗？",
+    "ground_truth": "需要，补卡说明应在当天提交。"
+  },
+  {
+    "id": "q17",
+    "category": "paraphrase",
+    "difficulty": "easy",
+    "question": "公司的线上考勤截止时间是几点？",
+    "ground_truth": "员工每天需要在 10:00 前完成线上打卡。"
+  },
+  {
+    "id": "q18",
+    "category": "paraphrase",
+    "difficulty": "easy",
+    "question": "每天上午十点之后打卡算晚了吗？",
+    "ground_truth": "员工每天需要在 10:00 前完成线上打卡，文档没有进一步说明十点之后的具体处理方式。"
+  },
+  {
+    "id": "q19",
+    "category": "paraphrase",
+    "difficulty": "easy",
+    "question": "出差导致没能及时签到，要走什么流程？",
+    "ground_truth": "如果因为出差无法按时打卡，需要在当天提交补卡说明。"
+  },
+  {
+    "id": "q20",
+    "category": "paraphrase",
+    "difficulty": "easy",
+    "question": "开会错过打卡时间后应该怎么补救？",
+    "ground_truth": "如果因为会议无法按时打卡，需要在当天提交补卡说明。"
+  },
+  {
+    "id": "q21",
+    "category": "paraphrase",
+    "difficulty": "easy",
+    "question": "网络故障导致考勤失败怎么办？",
+    "ground_truth": "如果因为网络问题无法按时打卡，需要在当天提交补卡说明。"
+  },
+  {
+    "id": "q22",
+    "category": "paraphrase",
+    "difficulty": "easy",
+    "question": "报销时发票和支付凭证都要准备吗？",
+    "ground_truth": "需要准备发票和付款截图，另外还需要准备报销说明。"
+  },
+  {
+    "id": "q23",
+    "category": "paraphrase",
+    "difficulty": "easy",
+    "question": "报销提交后谁来审核？",
+    "ground_truth": "报销申请需要直属主管审批。"
+  },
+  {
+    "id": "q24",
+    "category": "paraphrase",
+    "difficulty": "easy",
+    "question": "财务处理报销大概要等多久？",
+    "ground_truth": "直属主管审批通过后，财务会在 5 个工作日内完成处理。"
+  },
+  {
+    "id": "q25",
+    "category": "paraphrase",
+    "difficulty": "easy",
+    "question": "企业知识库中的资料能不能包含个人敏感数据？",
+    "ground_truth": "不能，上传到知识库的文档应避免包含敏感个人信息。"
+  },
+  {
+    "id": "q26",
+    "category": "paraphrase",
+    "difficulty": "easy",
+    "question": "制度文件长期更新时，文件名最好加上什么？",
+    "ground_truth": "长期维护的制度文档应在文件名中包含版本日期。"
+  },
+  {
+    "id": "q27",
+    "category": "paraphrase",
+    "difficulty": "easy",
+    "question": "知识库搜不到答案时，问题应该怎样修改？",
+    "ground_truth": "可以在确认文档已经上传成功后，尝试使用更具体的问题描述。"
+  },
+  {
+    "id": "q28",
+    "category": "paraphrase",
+    "difficulty": "easy",
+    "question": "哪些资料不适合放进公司的知识库？",
+    "ground_truth": "敏感个人信息、客户隐私和未经授权的商业合同不适合上传到知识库。"
+  },
+  {
+    "id": "q29",
+    "category": "multi_condition",
+    "difficulty": "medium",
+    "question": "如果员工因为会议、出差或网络问题没有在规定时间打卡，三种情况的处理方式是什么？",
+    "ground_truth": "这三种情况都需要在当天提交补卡说明。"
+  },
+  {
+    "id": "q30",
+    "category": "multi_condition",
+    "difficulty": "medium",
+    "question": "完整的报销流程包括哪些步骤？",
+    "ground_truth": "先准备发票、付款截图和报销说明，再在系统中提交申请；直属主管审批通过后，财务会在 5 个工作日内完成处理。"
+  },
+  {
+    "id": "q31",
+    "category": "multi_condition",
+    "difficulty": "medium",
+    "question": "报销申请提交前要准备什么，提交后又要经过谁审批？",
+    "ground_truth": "提交前要准备发票、付款截图和报销说明，提交后需要直属主管审批。"
+  },
+  {
+    "id": "q32",
+    "category": "multi_condition",
+    "difficulty": "medium",
+    "question": "报销从准备材料到财务处理完成，中间涉及哪些角色和时间节点？",
+    "ground_truth": "员工先准备发票、付款截图和报销说明并提交申请，直属主管审批通过后，财务会在 5 个工作日内完成处理。"
+  },
+  {
+    "id": "q33",
+    "category": "multi_condition",
+    "difficulty": "medium",
+    "question": "知识库文档管理同时涉及内容安全和文件维护时，应该遵守哪些规则？",
+    "ground_truth": "文档应避免包含敏感个人信息、客户隐私和未经授权的商业合同；长期维护的制度文档应在文件名中包含版本日期。"
+  },
+  {
+    "id": "q34",
+    "category": "multi_condition",
+    "difficulty": "medium",
+    "question": "一个长期维护的制度文档如果包含客户隐私，上传前应该注意什么？",
+    "ground_truth": "上传前应避免包含客户隐私，同时长期维护的制度文档应在文件名中包含版本日期。"
+  },
+  {
+    "id": "q35",
+    "category": "multi_condition",
+    "difficulty": "medium",
+    "question": "知识库没有命中答案时，应该按什么顺序排查？",
+    "ground_truth": "先检查文档是否已经上传成功，再尝试使用更具体的问题描述。"
+  },
+  {
+    "id": "q36",
+    "category": "multi_condition",
+    "difficulty": "medium",
+    "question": "如果报销材料不完整，可以直接提交申请并等待财务处理吗？",
+    "ground_truth": "文档要求先准备发票、付款截图和报销说明，再在系统中提交申请；没有说明材料不完整时可以直接提交。"
+  },
+  {
+    "id": "q37",
+    "category": "multi_condition",
+    "difficulty": "medium",
+    "question": "员工没有按时打卡且当天也没有提交补卡说明，文档规定了什么处罚？",
+    "ground_truth": "知识库只说明因会议、出差或网络问题无法按时打卡时需要当天提交补卡说明，没有说明未提交补卡说明的处罚。"
+  },
+  {
+    "id": "q38",
+    "category": "multi_condition",
+    "difficulty": "medium",
+    "question": "报销申请经过直属主管审批后，财务是否立即处理完成？",
+    "ground_truth": "不是立即完成，直属主管审批通过后，财务会在 5 个工作日内完成处理。"
+  },
+  {
+    "id": "q39",
+    "category": "multi_condition",
+    "difficulty": "medium",
+    "question": "如果知识库没有命中问题，除了修改问题描述，还需要确认什么？",
+    "ground_truth": "还需要先检查相关文档是否已经上传成功。"
+  },
+  {
+    "id": "q40",
+    "category": "multi_condition",
+    "difficulty": "medium",
+    "question": "文档上传规范中同时提到了哪些隐私或商业风险？",
+    "ground_truth": "应避免包含敏感个人信息、客户隐私和未经授权的商业合同。"
+  },
+  {
+    "id": "q41",
+    "category": "unanswerable",
+    "difficulty": "hard",
+    "question": "员工每月有多少天年假？",
+    "ground_truth": "当前知识库中没有足够信息回答员工每月有多少天年假。"
+  },
+  {
+    "id": "q42",
+    "category": "unanswerable",
+    "difficulty": "hard",
+    "question": "迟到一次会扣多少钱？",
+    "ground_truth": "当前知识库中没有足够信息回答迟到一次会扣多少钱。"
+  },
+  {
+    "id": "q43",
+    "category": "unanswerable",
+    "difficulty": "hard",
+    "question": "员工报销的金额上限是多少？",
+    "ground_truth": "当前知识库中没有足够信息回答员工报销的金额上限。"
+  },
+  {
+    "id": "q44",
+    "category": "unanswerable",
+    "difficulty": "hard",
+    "question": "知识库支持上传哪些文件格式？",
+    "ground_truth": "当前知识库中没有足够信息回答支持上传哪些文件格式。"
+  },
+  {
+    "id": "q45",
+    "category": "unanswerable",
+    "difficulty": "hard",
+    "question": "直属主管最长需要几天完成审批？",
+    "ground_truth": "当前知识库只说明直属主管需要审批，没有说明最长审批时间。"
+  },
+  {
+    "id": "q46",
+    "category": "unanswerable",
+    "difficulty": "hard",
+    "question": "公司的技术支持人员是谁？",
+    "ground_truth": "当前知识库中没有足够信息回答公司的技术支持人员是谁。"
+  },
+  {
+    "id": "q47",
+    "category": "unanswerable",
+    "difficulty": "hard",
+    "question": "员工应该把报销发票保存到哪个云盘？",
+    "ground_truth": "当前知识库中没有足够信息回答报销发票应该保存到哪个云盘。"
+  },
+  {
+    "id": "q48",
+    "category": "unanswerable",
+    "difficulty": "hard",
+    "question": "无法打卡时需要填写哪一种表单？",
+    "ground_truth": "当前知识库只说明需要提交补卡说明，没有说明具体表单名称。"
+  },
+  {
+    "id": "q49",
+    "category": "unanswerable",
+    "difficulty": "hard",
+    "question": "授权过的商业合同是否允许上传到知识库？",
+    "ground_truth": "当前知识库只说明应避免上传未经授权的商业合同，没有明确说明已授权商业合同是否允许上传。"
+  },
+  {
+    "id": "q50",
+    "category": "unanswerable",
+    "difficulty": "hard",
+    "question": "补卡说明提交后由谁审批？",
+    "ground_truth": "当前知识库说明了补卡说明需要当天提交，但没有说明补卡说明由谁审批。"
+  }
+]

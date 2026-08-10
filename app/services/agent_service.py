@@ -1,5 +1,5 @@
-from app.agent.graph import build_agent_graph
-from app.agent.dynamic_prompt_agent import LAST_REWRITE_INFO, build_dynamic_prompt_agent
+from app.workflows.agent_router import build_agent_graph
+from app.workflows.dynamic_rag import DYNAMIC_RAG_TOP_K, build_dynamic_prompt_agent
 from app.storage.database import save_message
 
 
@@ -15,6 +15,8 @@ class AgentService:
                 "input": user_input,
                 "thread_id": thread_id,
                 "route": "",
+                "route_reason": "",
+                "graph_path": [],
                 "output": "",
                 "tool_used": "",
             }
@@ -23,22 +25,41 @@ class AgentService:
         return result
 
     def invoke_dynamic_rag(self, user_input: str, thread_id: str) -> dict:
-        agent = build_dynamic_prompt_agent()
-        result = agent.invoke({"messages": [{"role": "user", "content": user_input}]})
-        answer = result["messages"][-1].content
+        graph = build_dynamic_prompt_agent()
+        result = graph.invoke(
+            {
+                "original_query": user_input,
+                "rewritten_query": "",
+                "hyde_answer": "",
+                "retrieval_query": "",
+                "top_k": DYNAMIC_RAG_TOP_K,
+                "retrieved_chunks": [],
+                "context": "",
+                "context_sufficient": False,
+                "context_evaluation_reason": "",
+                "graph_path": [],
+                "output": "",
+            }
+        )
+        answer = result["output"]
 
         self._save_turn(thread_id, user_input, str(answer))
 
         return {
             "output": str(answer),
-            "tool_used": "dynamic_prompt_retriever",
-            "route": "dynamic_rag",
-            "original_query": LAST_REWRITE_INFO.get("original_query", user_input),
-            "rewritten_query": LAST_REWRITE_INFO.get("rewritten_query", ""),
-            "hyde_answer": LAST_REWRITE_INFO.get("hyde_answer", ""),
-            "retrieval_query": LAST_REWRITE_INFO.get("retrieval_query", ""),
-            "top_k": LAST_REWRITE_INFO.get("top_k", 3),
-            "retrieved_chunks": LAST_REWRITE_INFO.get("retrieved_chunks", []),
+            "tool_used": "dynamic_rag_langgraph",
+            "route": "dynamic_rag_graph",
+            "used_rag_tool": True,
+            "rag_tool_name": "retrieve_context",
+            "graph_path": result.get("graph_path", []),
+            "original_query": result.get("original_query", user_input),
+            "rewritten_query": result.get("rewritten_query", ""),
+            "hyde_answer": result.get("hyde_answer", ""),
+            "retrieval_query": result.get("retrieval_query", ""),
+            "context_sufficient": result.get("context_sufficient", False),
+            "context_evaluation_reason": result.get("context_evaluation_reason", ""),
+            "top_k": result.get("top_k", DYNAMIC_RAG_TOP_K),
+            "retrieved_chunks": result.get("retrieved_chunks", []),
         }
 
     def _save_turn(self, thread_id: str, user_input: str, answer: str) -> None:

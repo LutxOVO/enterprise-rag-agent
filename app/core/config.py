@@ -11,14 +11,20 @@ class Settings(BaseSettings):
     data_dir: Path = Path("data")
 
     embedding_provider: str = "qwen"
-    chat_provider: str = "qwen"
+    chat_provider: str = "deepseek"
 
     qwen_api_key: str = ""
+    # 只为兼容旧版 .env；新配置请统一使用 QWEN_API_KEY。
     dashscope_api_key: str = ""
     qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     qwen_chat_model: str = "qwen-plus"
     qwen_embedding_model: str = "text-embedding-v4"
     qwen_embedding_dimensions: int = 1024
+
+    siliconflow_api_key: str = ""
+    siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
+    siliconflow_embedding_model: str = "BAAI/bge-m3"
+    siliconflow_embedding_dimensions: int = 1024
 
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
@@ -39,12 +45,24 @@ class Settings(BaseSettings):
     mineru_is_ocr: bool = True
     mineru_poll_interval_seconds: float = 2.0
     mineru_timeout_seconds: int = 600
+    # MinerU 单次请求允许处理的最大 PDF 页数；超出后由项目自动拆分。
+    mineru_max_pages_per_request: int = 200
     mineru_fallback_to_pypdf: bool = False
 
     chunk_size: int = 700
     chunk_overlap: int = 120
     top_k: int = 4
     embedding_batch_size: int = 10
+    # 混合检索的 RRF 参数：候选越多越可能覆盖关键词命中的片段，但计算也会略增。
+    hybrid_rrf_k: int = 60
+    hybrid_candidate_multiplier: int = 3
+
+    # 批量上传的边界和并发配置。默认值适合本地学习项目，避免一次请求占用过多资源。
+    max_batch_files: int = 10
+    max_upload_file_size_mb: int = 50
+    upload_read_chunk_size: int = 1024 * 1024
+    upload_concurrency: int = 2
+    max_upload_retries: int = 3
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
@@ -65,12 +83,20 @@ class Settings(BaseSettings):
         return self.data_dir / "app.db"
 
     @property
+    def max_upload_file_size_bytes(self) -> int:
+        return self.max_upload_file_size_mb * 1024 * 1024
+
+    @property
     def resolved_qwen_api_key(self) -> str:
         return self.qwen_api_key or self.dashscope_api_key or os.getenv("DASHSCOPE_API_KEY", "")
 
     @property
     def resolved_deepseek_api_key(self) -> str:
         return self.deepseek_api_key or os.getenv("DEEPSEEK_API_KEY", "")
+
+    @property
+    def resolved_siliconflow_api_key(self) -> str:
+        return self.siliconflow_api_key or os.getenv("SILICONFLOW_API_KEY", "")
 
     def ensure_dirs(self) -> None:
         """启动前确保本地数据目录存在。"""

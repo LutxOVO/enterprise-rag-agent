@@ -1,3 +1,8 @@
+import json
+import logging
+import time
+import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,6 +16,15 @@ from app.storage.database import init_db
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+logger = logging.getLogger("rag.request")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """启动时创建数据目录和 SQLite 表，关闭时交给进程管理器回收资源。"""
+    settings.ensure_dirs()
+    init_db()
+    yield
 
 
 app = FastAPI(
@@ -18,14 +32,52 @@ app = FastAPI(
     description="A beginner-friendly FastAPI + LangChain + LangGraph RAG Agent demo.",
     version="0.1.0",
     docs_url=None,
+    lifespan=lifespan,
 )
 
 
-@app.on_event("startup")
-def on_startup() -> None:
-    """Create local data folders and SQLite tables before serving requests."""
-    settings.ensure_dirs()
-    init_db()
+@app.middleware("http")
+async def request_logging_middleware(request, call_next):
+    """为每个请求生成可串联日志，便于用 request_id 排查上传和问答问题。"""
+    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+    request.state.request_id = request_id
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        logger.exception(
+            json.dumps(
+                {
+                    "event": "request_failed",
+                    "request_id": request_id,
+                    "method": request.method,
+                    "path": request.url.path,
+                    "duration_ms": int((time.perf_counter() - started) * 1000),
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[:500],
+                },
+                ensure_ascii=False,
+            )
+        )
+        raise
+
+    response.headers["X-Request-ID"] = request_id
+    event = "request_completed" if response.status_code < 400 else "request_error_response"
+    log_method = logger.info if response.status_code < 400 else logger.warning
+    log_method(
+        json.dumps(
+            {
+                "event": event,
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": int((time.perf_counter() - started) * 1000),
+            },
+            ensure_ascii=False,
+        )
+    )
+    return response
 
 
 app.include_router(router)

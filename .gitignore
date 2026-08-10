@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+test-results/
 .mypy_cache/
 .ruff_cache/
 .idea/
@@ -14,3 +15,4 @@ data/
 logs/
 eval_outputs/
 scripts/data/
+tmp/
