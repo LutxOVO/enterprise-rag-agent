@@ -40,6 +40,8 @@ flowchart LR
 
 ![检索来源与 hybrid RRF 调试结果](docs/assets/retrieval-sources-demo.png)
 
+真实隔离环境演示视频（约 13 秒）：[rag-demo.webm](docs/assets/rag-demo.webm)。视频实际走通批量上传、SHA-256 重复跳过、hybrid 问答、来源 chunk、检索调试和文档删除。
+
 RAGAS 对比图不预置虚构数字。使用目标 PDF 跑完同一批问题的 `baseline` 和 `hyde_rewrite` 后，执行 `scripts\\compare_evaluations.py` 生成真实汇总，再把脱敏后的图表放入 `docs/assets/`。
 
 ## 3 分钟启动
@@ -523,6 +525,28 @@ POST /api/evaluation/ragas/run
 - 噪声敏感度 (Noise Sensitivity)
 - 上下文召回 (Context Recall)
 - 检索命中率 `Hit@1`、`Hit@3` 和 `MRR`
+
+### 10 条真实 A/B 结果
+
+以下结果使用同一份 AI Agent PDF、同一批 10 条问题、`top_k=3`、`dense` 检索和 DeepSeek 生成模型得到。数值来自 `eval_outputs/ragas_ab_summary.json`，只对有效样本计算平均值：
+
+| 指标 | baseline | hyde_rewrite | delta |
+|---|---:|---:|---:|
+| Faithfulness | 0.9429（5/10） | 1.0000（1/10） | +0.0571* |
+| Answer Relevancy | 0.8878（10/10） | 0.6791（10/10） | -0.2087 |
+| Context Precision | 0.8917（10/10） | 0.9833（10/10） | +0.0916 |
+| Context Entity Recall | 无有效值（0/10） | 无有效值（0/10） | - |
+| Noise Sensitivity | 无有效值（0/10） | 无有效值（0/10） | - |
+| Context Recall | 0.6583（10/10） | 0.6917（10/10） | +0.0334 |
+| Hit@1 | 0.1000 | 0.0000 | -0.1000 |
+| Hit@3 | 0.3000 | 0.2000 | -0.1000 |
+| MRR | 0.1833 | 0.0833 | -0.1000 |
+
+初步结论：这批问题中，HyDE + Query Rewrite 提高了上下文精度和上下文召回，但降低了回答相关性、Hit@K 和 MRR，不能写成“整体效果提升”。Faithfulness 的有效样本数不足，Context Entity Recall 和 Noise Sensitivity 因 DeepSeek Judge 请求超时全部缺失，后续需要继续优化评估稳定性再扩展到 60 条。
+
+\* Faithfulness 的分数只对成功返回的样本求平均，括号内是有效样本数 / 总样本数。
+
+RAGAS 0.4.x 的 `AnswerRelevancy` 默认会请求多组生成，而 DeepSeek 兼容接口只支持 `n=1`；项目已将 `strictness` 固定为 1，并限制 Judge 并发、超时和重试。云端评估仍可能因为供应商限流或结构化输出超时产生空值，报告中必须保留空值数量。
 
 输出文件：
 

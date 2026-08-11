@@ -398,13 +398,20 @@ def build_ragas_metrics():
         api_key=settings.resolved_deepseek_api_key,
         base_url=settings.deepseek_base_url,
         temperature=0,
+        timeout=60,
+        max_retries=0,
     )
     evaluator_llm = LangchainLLMWrapper(deepseek_llm)
     evaluator_embeddings = LangchainEmbeddingsWrapper(get_embeddings())
 
     return [
         Faithfulness(llm=evaluator_llm),
-        AnswerRelevancy(llm=evaluator_llm, embeddings=evaluator_embeddings),
+        # DeepSeek 兼容接口只支持 n=1；RAGAS 默认 strictness=3 会请求三组生成。
+        AnswerRelevancy(
+            llm=evaluator_llm,
+            embeddings=evaluator_embeddings,
+            strictness=1,
+        ),
         LLMContextPrecisionWithReference(llm=evaluator_llm, name="context_precision"),
         ContextEntityRecall(llm=evaluator_llm),
         NoiseSensitivity(llm=evaluator_llm),
@@ -417,6 +424,7 @@ def run_ragas_evaluation(samples: list[dict[str, Any]]):
     ensure_ragas_vertexai_compat()
 
     from ragas import EvaluationDataset, evaluate
+    from ragas.run_config import RunConfig
 
     # RAGAS 只需要这四个标准字段；项目自己的分类、来源和时延字段单独保存在样本文件。
     evaluation_rows = [
@@ -432,6 +440,9 @@ def run_ragas_evaluation(samples: list[dict[str, Any]]):
     return evaluate(
         dataset=evaluation_dataset,
         metrics=build_ragas_metrics(),
+        # 云端 Judge 不适合使用 RAGAS 默认的 16 并发；限制并发并关闭重复重试，
+        # 避免单条异常拖住整组实验。
+        run_config=RunConfig(timeout=60, max_retries=0, max_wait=5, max_workers=2),
         raise_exceptions=False,
         show_progress=False,
     )
@@ -452,7 +463,9 @@ def _summarize_metric_columns(df: Any) -> tuple[dict[str, float], dict[str, int]
         canonical_name = _canonical_metric_name(str(column))
         if canonical_name is None:
             continue
-        numeric_values = df[column].apply(_to_float_or_none)
+        # 先转成 Python list，避免 Pandas 把返回的 None 自动提升成 NaN，
+        # 否则 NaN 会绕过 ``value is not None`` 判断并污染平均值。
+        numeric_values = [_to_float_or_none(value) for value in df[column].tolist()]
         valid_values = [value for value in numeric_values if value is not None]
         metrics[canonical_name] = round(sum(valid_values) / len(valid_values), 4) if valid_values else 0.0
         null_counts[canonical_name] = len(numeric_values) - len(valid_values)
