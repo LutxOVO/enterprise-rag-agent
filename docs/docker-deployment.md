@@ -24,7 +24,7 @@
 
 ## 2. 关键文件
 
-- `Dockerfile`：描述如何构建应用镜像。
+- `Dockerfile`：构建阶段使用 `uv sync --frozen` 按 `uv.lock` 安装依赖；运行阶段直接调用 `/app/.venv/bin/python -m uvicorn` 启动锁定环境中的 FastAPI。
 - `compose.yaml`：描述容器、端口、环境变量、数据卷和健康检查。
 - `.dockerignore`：避免把 `.env`、`.venv`、`data/` 和缓存复制到构建上下文。
 - `.env`：运行时注入 API Key，不会被复制进镜像。

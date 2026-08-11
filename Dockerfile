@@ -28,4 +28,6 @@ RUN mkdir -p /app/data
 EXPOSE 8000
 
 # 单 worker 运行，避免 SQLite、Chroma 和进程内写入锁被多进程放大。
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 构建阶段使用 uv --frozen 安装依赖；运行阶段直接调用锁定环境中的 Python，
+# 避免 uv run 在部分 Docker Desktop 环境下退出码 135。
+CMD ["/app/.venv/bin/python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
