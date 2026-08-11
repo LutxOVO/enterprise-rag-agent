@@ -1,6 +1,6 @@
 # Docker 单机部署说明
 
-本文说明如何把当前 RAG 项目运行在 Docker 容器中。部署目标是单机学习和演示，不会把 Qwen、DeepSeek 或 MinerU 模型下载到本地。
+本文说明如何把当前 RAG 项目运行在 Docker Compose 中。部署由 FastAPI 应用和 PostgreSQL 组成，不会把 Qwen、DeepSeek 或 MinerU 模型下载到本地。
 
 ## 1. 部署结构
 
@@ -10,25 +10,25 @@
   +-- Docker Compose
         |
         +-- rag 容器
-              |-- FastAPI + LangChain + LangGraph
-              |-- SQLite
-              |-- Chroma
-              |-- 文档上传和 MinerU 输出
-              |
-              +-- 云端 Qwen Embedding
-              +-- 云端 DeepSeek Chat
-              +-- MinerU 官方 API
+        |     |-- FastAPI + LangChain + LangGraph
+        |     |-- Chroma
+        |     |-- 上传文件和 MinerU 输出
+        |     +-- 云端 Qwen / DeepSeek / MinerU API
+        |
+        +-- postgres 容器
+              +-- PostgreSQL 文档、批次、指纹和对话历史
 ```
 
-容器中运行的是 Python 应用。模型调用仍然通过 `.env` 中的 API Key 访问云端。宿主机的 `data/` 目录挂载到容器的 `/app/data`，因此容器删除或重建后，知识库数据不会随镜像消失。
+PostgreSQL 使用命名卷 `postgres_data` 持久化，Chroma、原始上传文件和 MinerU 输出使用宿主机的 `data/` 目录。删除容器不会删除这两类数据。
 
 ## 2. 关键文件
 
-- `Dockerfile`：构建阶段使用 `uv sync --frozen` 按 `uv.lock` 安装依赖；运行阶段直接调用 `/app/.venv/bin/python -m uvicorn` 启动锁定环境中的 FastAPI。
-- `compose.yaml`：描述容器、端口、环境变量、数据卷和健康检查。
+- `Dockerfile`：构建阶段使用 `uv sync --frozen` 按 `uv.lock` 安装依赖；运行阶段直接调用 `/app/.venv/bin/python -m uvicorn`。
+- `compose.yaml`：定义 `rag`、`postgres`、端口、环境变量、健康检查和数据卷。
 - `.dockerignore`：避免把 `.env`、`.venv`、`data/` 和缓存复制到构建上下文。
-- `.env`：运行时注入 API Key，不会被复制进镜像。
-- `data/`：保存 SQLite、Chroma、上传文件和 MinerU 解析结果。
+- `.env`：运行时注入 API Key 和 PostgreSQL 配置，不会被复制进镜像。
+- `data/`：保存 Chroma、上传文件和 MinerU 解析结果。
+- `postgres_data`：保存 PostgreSQL 业务数据。
 
 ## 3. 第一次启动
 
@@ -57,35 +57,40 @@ DEEPSEEK_API_KEY=你的 DeepSeek API Key
 MINERU_API_TOKEN=你的 MinerU API Token
 ```
 
-Docker Compose 会读取 `.env` 并把这些变量注入 `rag` 容器。真实 `.env` 被 `.dockerignore` 排除，不会进入镜像层。
+PostgreSQL 默认配置为：
 
-### 3.3 检查 Compose 配置
+```env
+POSTGRES_DB=rag
+POSTGRES_USER=rag
+POSTGRES_PASSWORD=rag_learning_password
+POSTGRES_PORT=5432
+```
+
+Compose 内部会把应用的数据库地址设置为：
+
+```text
+postgresql+psycopg://rag:rag_learning_password@postgres:5432/rag
+```
+
+### 3.3 检查并启动
 
 ```powershell
 docker compose config --quiet
-```
-
-命令没有输出并返回成功，表示 Compose 配置可以解析。不要把 `docker compose config` 的完整输出发到公开位置，因为它可能包含环境变量值。
-
-### 3.4 构建并启动
-
-```powershell
-docker compose build
-docker compose up -d
+docker compose up -d --build
 docker compose ps
 ```
 
-第一次构建会安装 `pyproject.toml` 和 `uv.lock` 中的依赖，可能需要几分钟。修改 Python 代码后再次执行 `docker compose build`，Docker 会复用依赖缓存层。
+预期看到 `postgres` 和 `rag` 两个服务。等待两个服务的状态变为 `healthy`。
+
+第一次构建会安装 `pyproject.toml` 和 `uv.lock` 中的依赖，可能需要几分钟。修改 Python 代码后再次执行 `docker compose up -d --build`，Docker 会复用依赖缓存层。
 
 ## 4. 检查服务
-
-Compose 健康检查访问的是 `/api/health`，不是 `/health`：
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/api/health
 ```
 
-预期返回类似：
+预期返回：
 
 ```json
 {
@@ -102,24 +107,29 @@ Swagger 文档：http://127.0.0.1:8000/docs
 健康检查：http://127.0.0.1:8000/api/health
 ```
 
-查看实时日志：
+`/api/health` 会执行 `SELECT 1`，所以它不仅检查 FastAPI 进程，也能发现 PostgreSQL 连接失败。
+
+查看日志：
 
 ```powershell
 docker compose logs -f rag
+docker compose logs -f postgres
 ```
 
 ## 5. 端口映射
 
-Compose 默认把宿主机的 `8000` 映射到容器的 `8000`：
+默认端口为：
 
 ```text
-宿主机 127.0.0.1:8000 -> 容器 0.0.0.0:8000
+宿主机 127.0.0.1:8000 -> rag 容器 8000
+宿主机 127.0.0.1:5432 -> postgres 容器 5432
 ```
 
-如果 8000 已被占用，在 `.env` 中增加或修改：
+如果端口被占用，在 `.env` 中修改：
 
 ```env
 RAG_PORT=8001
+POSTGRES_PORT=5433
 ```
 
 然后重新启动：
@@ -128,41 +138,98 @@ RAG_PORT=8001
 docker compose up -d
 ```
 
-此时访问 `http://127.0.0.1:8001/`。容器内部端口仍然是 8000，不需要修改 Dockerfile。
+应用访问地址会变成 `http://127.0.0.1:8001/`。容器内部仍然使用 `postgres:5432`，不需要修改应用代码。
 
 ## 6. 数据持久化
 
-Compose 中的卷映射是：
+Compose 使用两类存储：
 
 ```yaml
 volumes:
+  - postgres_data:/var/lib/postgresql/data
   - ./data:/app/data
 ```
 
-应用中的 `DATA_DIR` 在容器里被设置为 `/app/data`，因此以下内容都会写到宿主机项目目录：
+PostgreSQL 命名卷保存：
 
-- `data/app.db`：SQLite 文档、批次和对话记录。
+- 文档元数据。
+- 批次和文件状态。
+- SHA-256 指纹。
+- 多轮对话历史。
+
+宿主机 `data/` 保存：
+
 - `data/chroma/`：Chroma 向量库。
 - `data/uploads/`：原始上传文件。
 - `data/mineru_output/`：MinerU 输出和 PDF 分片解析结果。
 
-停止容器：
+停止服务：
 
 ```powershell
 docker compose down
 ```
 
-`docker compose down` 只删除容器和网络，不删除宿主机 `data/`。重新执行 `docker compose up -d` 后，原来的知识库仍然可以使用。
+`docker compose down` 不会删除 `postgres_data` 或宿主机的 `data/`。不要使用 `docker compose down -v`，因为 `-v` 会删除 PostgreSQL 命名卷。
 
-## 7. 上传和 RAG 流程
+## 7. 从旧 SQLite 迁移
 
-Docker 不改变现有 API。启动后可以继续使用原来的接口：
+如果项目以前使用 `data/app.db`，先停止旧应用并备份文件：
 
 ```powershell
-curl.exe -X POST "http://127.0.0.1:8000/api/documents/upload" -F "file=@sample_docs/company_handbook.md"
+copy data\app.db data\app.db.bak
 ```
 
-文件进入容器后，仍然按原流程处理：
+先启动 PostgreSQL：
+
+```powershell
+docker compose up -d postgres
+```
+
+先进行只读检查：
+
+```powershell
+docker compose run --rm rag `
+  /app/.venv/bin/python scripts/migrate_sqlite_to_postgres.py `
+  --sqlite-path /app/data/app.db `
+  --dry-run
+```
+
+确认行数和缺失文件列表后，执行迁移：
+
+```powershell
+docker compose run --rm rag `
+  /app/.venv/bin/python scripts/migrate_sqlite_to_postgres.py `
+  --sqlite-path /app/data/app.db
+```
+
+迁移内容包括 `documents`、`messages`、`upload_batches`、`upload_batch_items` 和 `document_fingerprints`。脚本使用主键和文件 hash 幂等 upsert，重复执行不会重复插入。
+
+旧 Windows 路径会映射到容器路径，例如：
+
+```text
+D:\项目\data\uploads\a.pdf
+-> /app/data/uploads/a.pdf
+```
+
+脚本不会删除旧 `data/app.db`，也不会重新生成 Chroma 向量。迁移完成后启动完整服务：
+
+```powershell
+docker compose up -d
+```
+
+如果报告某些文件不存在，需要把原始文件放回 `data/uploads/`，否则失败项无法执行重试或重建索引。
+
+## 8. 上传和 RAG 流程
+
+Docker 不改变现有 API：
+
+```powershell
+curl.exe -X POST `
+  "http://127.0.0.1:8000/api/documents/upload" `
+  -F "file=@sample_docs/company_handbook.md"
+```
+
+文件进入容器后，按以下流程处理：
 
 ```text
 上传文件
@@ -171,31 +238,27 @@ curl.exe -X POST "http://127.0.0.1:8000/api/documents/upload" -F "file=@sample_d
 -> Markdown 切分
 -> Qwen Embedding
 -> Chroma
--> SQLite 登记
+-> PostgreSQL 登记
 ```
 
-超过 MinerU 单次页数限制的 PDF 仍会自动拆分。拆分后的临时文件和解析结果也位于 `/app/data`，所以重启容器不会丢失排查材料。
+## 9. 常见问题
 
-## 8. 常见问题
-
-### 端口被占用
-
-修改 `.env` 中的 `RAG_PORT`，例如设置为 `8001`，再执行 `docker compose up -d`。
-
-### 容器启动但健康检查失败
-
-先看状态和日志：
+### PostgreSQL 没有健康
 
 ```powershell
 docker compose ps
-docker compose logs --tail=200 rag
+docker compose logs --tail=200 postgres
 ```
 
-常见原因是应用没有监听 `0.0.0.0`、依赖安装失败，或容器刚启动还处于 `start_period` 时间内。等待几十秒后再次执行健康检查。
+确认 `.env` 中的 `POSTGRES_DB`、`POSTGRES_USER` 和 `POSTGRES_PASSWORD` 没有被修改成互相不匹配的值。首次启动需要等待几秒初始化数据库。
+
+### 应用提示 DATABASE_URL 错误
+
+Docker Compose 会自动给 `rag` 容器注入内部地址 `postgres:5432`。本地直接使用 Python 启动时，需要把 `.env` 中的地址改为 `localhost:5432`。
 
 ### API Key 缺失
 
-缺少 API Key 通常不会阻止 FastAPI 健康接口启动，但上传、Embedding、问答或 MinerU 解析会失败。确认 `.env` 中的变量名与 `.env.example` 完全一致，然后重建或重启容器：
+缺少 API Key 通常不会阻止 PostgreSQL 和健康接口启动，但上传、Embedding、问答或 MinerU 解析会失败。确认变量名与 `.env.example` 完全一致，然后执行：
 
 ```powershell
 docker compose up -d --build
@@ -207,34 +270,30 @@ docker compose up -d --build
 
 ### 修改代码后页面没有变化
 
-Docker Compose 默认不会热重载。重新构建并启动：
+Docker Compose 默认不会热重载：
 
 ```powershell
 docker compose up -d --build
 ```
 
-本地开发仍然可以使用原来的 `uv run uvicorn app.main:app --reload`，Docker 部署和本地开发互不冲突。
+## 10. 测试数据库
 
-## 9. 学习建议
+测试不能连接演示库 `rag`。本地测试需要一个独立的 `rag_test` 数据库：
 
-可以按下面顺序理解 Docker：
+```powershell
+docker compose exec postgres createdb -U rag rag_test
+$env:TEST_DATABASE_URL="postgresql+psycopg://rag:rag_learning_password@localhost:5432/rag_test"
+uv run pytest -q
+```
 
-1. `Dockerfile` 是镜像的构建步骤。
-2. 镜像是应用和依赖的只读模板。
-3. 容器是镜像启动后的运行实例。
-4. `ports` 负责宿主机和容器之间的网络映射。
-5. `volumes` 负责把容器内数据保存到宿主机。
-6. `env_file` 负责在启动时注入配置和 API Key。
-7. `healthcheck` 负责告诉 Compose 应用是否已经可以接收请求。
+如果数据库已经存在，`createdb` 的报错可以忽略。GitHub Actions 会自动启动独立 PostgreSQL service，并注入 `TEST_DATABASE_URL`。
 
-建议先运行健康检查，再上传一个 Markdown 文件，最后停止并重新启动容器，观察 `data/` 中的 SQLite 和 Chroma 是否仍然存在。
-
-## 10. 当前方案的边界
+## 11. 当前方案边界
 
 这是单机部署方案，适合学习、演示和个人项目：
 
-- 不提供多副本扩展。
+- 不提供 PostgreSQL 高可用、读写分离和多副本扩展。
 - 不提供 HTTPS、用户认证和反向代理。
 - 不把模型下载到镜像中。
 - 不使用 Redis、MySQL、Celery 或 Kubernetes。
-- SQLite、Chroma 和进程内锁决定了容器默认使用单 worker。
+- Chroma 和本地文件处理仍使容器默认使用单 worker。

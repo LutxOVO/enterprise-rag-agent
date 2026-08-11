@@ -190,7 +190,7 @@ class DocumentService:
             with VECTOR_WRITE_LOCK:
                 vector_store = self._get_vector_store()
                 vector_store.add_documents(documents)
-                # SQLite 没有和 Chroma 共用事务，成功登记失败时下面的 except 会回滚向量。
+                # PostgreSQL 没有和 Chroma 共用事务，成功登记失败时下面的 except 会回滚向量。
                 save_document(
                     saved_upload.document_id,
                     saved_upload.filename,

@@ -38,7 +38,7 @@ from app.services.upload_batch_service import (
     run_batch_upload,
 )
 from app.services.vector_store_service import clear_knowledge_base, get_system_status, list_vector_chunks
-from app.storage.database import list_documents
+from app.storage.database import check_database_connection, list_documents
 
 
 router = APIRouter(prefix="/api")
@@ -46,6 +46,10 @@ router = APIRouter(prefix="/api")
 
 @router.get("/health")
 def health() -> dict:
+    try:
+        check_database_connection()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"PostgreSQL is unavailable: {exc}") from exc
     return {"status": "ok", "app": settings.app_name}
 
 
@@ -84,7 +88,7 @@ async def retry_upload_batch_item(batch_id: str, item_id: str) -> BatchUploadRes
 
 @router.get("/documents", response_model=list[DocumentInfo])
 def documents() -> list[dict]:
-    """从 SQLite 返回已上传文档列表。"""
+    """从 PostgreSQL 返回已上传文档列表。"""
     return list_documents()
 
 
@@ -93,7 +97,7 @@ def delete_document_route(
     document_id: str,
     delete_files: bool = Query(True, description="同时删除原文件和 MinerU 输出"),
 ) -> DeleteDocumentResponse:
-    """删除单个文档的向量、SQLite 元数据和可选本地文件。"""
+    """删除单个文档的向量、PostgreSQL 元数据和可选本地文件。"""
     return delete_document(document_id, delete_files=delete_files)
 
 
@@ -123,7 +127,7 @@ def clear_vector_store(
     confirm: bool = Query(False, description="Must be true to clear the vector store"),
     delete_files: bool = Query(True, description="Also delete uploaded files and MinerU outputs"),
 ) -> ClearVectorStoreResponse:
-    """清空 Chroma、SQLite 元数据和可选的本地上传文件。"""
+    """清空 Chroma、PostgreSQL 元数据和可选的本地上传文件。"""
     if not confirm:
         raise HTTPException(status_code=400, detail="Set confirm=true to clear the vector store.")
 

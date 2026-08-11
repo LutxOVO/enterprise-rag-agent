@@ -81,7 +81,7 @@
 
             <div class="panel danger-zone">
               <h3>清理知识库</h3>
-              <p>清空 Chroma、SQLite 文档元数据和对话历史。演示前可用它清理重复文档。</p>
+              <p>清空 Chroma、PostgreSQL 文档元数据和对话历史。演示前可用它清理重复文档。</p>
               <label class="check-row">
                 <input id="deleteFiles" type="checkbox" checked />
                 <span>同时删除上传文件和 MinerU 输出</span>
@@ -97,7 +97,7 @@
             <div class="section-header compact-header">
               <div>
                 <h3>最近批次</h3>
-                <p>批次记录会保存在 SQLite；失败文件可以单独重试。</p>
+                <p>批次记录会保存在 PostgreSQL；失败文件可以单独重试。</p>
               </div>
               <button class="button subtle" id="refreshBatchHistoryBtn" type="button">
                 <span class="button-icon">历</span> 刷新批次

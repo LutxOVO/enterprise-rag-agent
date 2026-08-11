@@ -1,1 +1,1 @@
-"""Persistence layer for SQLite metadata and chat history."""
+"""Persistence layer for PostgreSQL metadata and chat history."""

@@ -21,12 +21,12 @@ from app.storage.database import (
 
 
 def delete_document(document_id: str, delete_files: bool = True) -> DeleteDocumentResponse:
-    """删除一个文档的向量、SQLite 记录以及可选的本地源文件。"""
+    """删除一个文档的向量、PostgreSQL 记录以及可选的本地源文件。"""
     document = get_document(document_id)
     if document is None:
         raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
 
-    # 先删 Chroma，再删 SQLite，避免留下“数据库说存在、向量却还在”的残留。
+    # 先删 Chroma，再删 PostgreSQL，避免留下“数据库说存在、向量却还在”的残留。
     with VECTOR_WRITE_LOCK:
         removed_chunks = ChromaVectorStore().delete_by_document_id(document_id)
     deleted_record = delete_document_record(document_id)

@@ -16,7 +16,7 @@ flowchart TD
     H --> I[splitting: Markdown 或递归切分]
     I --> J[embedding: 调用 Embedding API]
     J --> K[Chroma 写入]
-    K --> L[SQLite 登记 indexed]
+    K --> L[PostgreSQL 登记 indexed]
     L --> M[批次汇总]
     H --> N[失败并记录阶段]
     I --> N
@@ -25,7 +25,7 @@ flowchart TD
     N --> O[保留源文件并支持 retry]
 ```
 
-当前接口仍然是同步返回：调用方等待这一批文件处理结束后得到最终结果。SQLite 会保存完整过程，因此即使只看到最终响应，也能在批次历史中知道每个文件成功、失败、跳过以及失败在哪个阶段。
+当前接口仍然是同步返回：调用方等待这一批文件处理结束后得到最终结果。PostgreSQL 会保存完整过程，因此即使只看到最终响应，也能在批次历史中知道每个文件成功、失败、跳过以及失败在哪个阶段。
 
 ## 状态设计
 
@@ -92,7 +92,7 @@ MAX_UPLOAD_RETRIES=3
 - `duration_ms`。
 - `retry_count`。
 
-状态写入 SQLite 后，前端、Swagger 和后续重试都可以使用同一份事实来源。
+状态写入 PostgreSQL 后，前端、Swagger 和后续重试都可以使用同一份事实来源。
 
 ## 为什么一个文件失败不能影响整批
 
@@ -112,10 +112,10 @@ LangGraph 的 Orchestrator-Worker 负责把每个文件分发给独立 worker。
 
 ## 为什么需要补偿清理
 
-SQLite 和 Chroma 是两个独立存储，它们不能共享一个数据库事务。可能出现这种中间状态：
+PostgreSQL 和 Chroma 是两个独立存储，它们不能共享一个数据库事务。可能出现这种中间状态：
 
 1. Chroma 已经写入 chunk。
-2. SQLite 登记文档时发生异常。
+2. PostgreSQL 登记文档时发生异常。
 
 如果直接返回失败，向量库里会留下没有文档记录的孤儿向量。项目在异常路径中使用 `document_id` 调用 Chroma 删除，尽量把两个存储恢复到一致状态。
 
@@ -133,7 +133,7 @@ MinerU 客户端和 Embedding 调用使用同步 HTTP/SDK。直接在 FastAPI �
 
 只有 `failed` 文件可以重试，成功和重复文件不会重新处理。重试：
 
-1. 复用 SQLite 中保存的源文件路径。
+1. 复用 PostgreSQL 中保存的源文件路径。
 2. 清除上一次可能留下的同文档向量。
 3. 重新登记指纹为 `processing`。
 4. 从 `parsing` 阶段重新执行。
@@ -173,6 +173,6 @@ POST /api/documents/upload-batches/{batch_id}/items/{item_id}/retry
 
 可以这样解释这部分工作：
 
-> 针对多文件知识库导入场景，设计基于 SHA-256 的幂等去重和文件级状态机，使用 LangGraph Orchestrator-Worker 隔离单文件失败；将 MinerU、切分、Embedding、Chroma 写入分阶段记录，并在跨 SQLite/Chroma 写入失败时执行补偿删除，同时提供失败文件重试和批次历史查询。
+> 针对多文件知识库导入场景，设计基于 SHA-256 的幂等去重和文件级状态机，使用 LangGraph Orchestrator-Worker 隔离单文件失败；将 MinerU、切分、Embedding、Chroma 写入分阶段记录，并在跨 PostgreSQL/Chroma 写入失败时执行补偿删除，同时提供失败文件重试和批次历史查询。
 
 重点不是声称系统已经是分布式生产平台，而是准确说明你解决了批量导入中的重复、部分失败、定位困难和脏数据问题。

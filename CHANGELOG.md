@@ -2,6 +2,13 @@
 
 版本标签应在对应功能完成并通过验证后创建。下面按功能边界记录当前候选版本；RAGAS 的具体提升百分比仍必须以真实运行结果为准。
 
+## v0.4.0 PostgreSQL 持久化
+
+- 使用 SQLAlchemy 同步连接池和 psycopg，将运行时业务数据库从 SQLite 迁移到 PostgreSQL；
+- Docker Compose 同时启动 FastAPI 和 PostgreSQL，并分别持久化 PostgreSQL、Chroma 和上传文件；
+- 增加旧 `data/app.db` 的 dry-run、幂等迁移和 Windows 路径映射脚本；
+- CI 和本地测试使用独立 `rag_test` 数据库，健康检查验证 PostgreSQL 连通性。
+
 ## v0.3.0 评估、混合检索与部署
 
 - RAGAS baseline / hyde_rewrite 评估链路与 60 条问题集；

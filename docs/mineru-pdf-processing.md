@@ -37,7 +37,7 @@ MinerUClient.parse_file_to_markdown()
               -> 删除临时分片 PDF
         |
         v
-Markdown 切分 -> Embedding -> Chroma -> SQLite
+Markdown 切分 -> Embedding -> Chroma -> PostgreSQL
 ```
 
 关键文件：

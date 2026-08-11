@@ -16,6 +16,11 @@ if TEST_DATA_DIR.exists():
 os.environ["DATA_DIR"] = str(TEST_DATA_DIR)
 os.environ["PDF_PARSER"] = "pypdf"
 os.environ["QWEN_API_KEY"] = ""
+# 冒烟测试固定使用独立 PostgreSQL 数据库，避免清理演示库中的真实数据。
+os.environ["DATABASE_URL"] = os.getenv(
+    "SMOKE_DATABASE_URL",
+    "postgresql+psycopg://rag:rag_learning_password@localhost:5432/rag_test",
+)
 
 from app.main import app
 from app.core.config import settings

@@ -63,6 +63,6 @@ class AgentService:
         }
 
     def _save_turn(self, thread_id: str, user_input: str, answer: str) -> None:
-        """Agent 的对话也复用 SQLite 历史表，方便按 thread_id 区分会话。"""
+        """Agent 的对话也复用 PostgreSQL 历史表，方便按 thread_id 区分会话。"""
         save_message(thread_id, "user", user_input)
         save_message(thread_id, "assistant", answer)

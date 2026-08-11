@@ -8,7 +8,7 @@ from app.storage.database import clear_documents, clear_messages, clear_upload_t
 
 
 def get_system_status() -> StatusResponse:
-    """汇总系统状态：SQLite 统计文档数，Chroma 统计 chunk 数。"""
+    """汇总系统状态：PostgreSQL 统计文档数，Chroma 统计 chunk 数。"""
     vector_store = ChromaVectorStore()
     return StatusResponse(
         app_name=settings.app_name,
@@ -16,7 +16,8 @@ def get_system_status() -> StatusResponse:
         chunk_count=vector_store.count_chunks(),
         embedding_provider=settings.embedding_provider,
         vector_store_path=str(settings.chroma_persist_dir),
-        database_path=str(settings.sqlite_db_path),
+        # 保留旧字段名以兼容前端；不返回带密码的 DATABASE_URL。
+        database_path="postgresql",
     )
 
 
@@ -34,7 +35,7 @@ def clear_knowledge_base(delete_files: bool = True) -> ClearVectorStoreResponse:
 
     这里同时清理三类数据：
     1. Chroma 中的 chunk 向量；
-    2. SQLite 中的文档元数据和聊天历史；
+    2. PostgreSQL 中的文档元数据和聊天历史；
     3. 可选删除上传文件和 MinerU 解析输出。
     """
     vector_store = ChromaVectorStore()

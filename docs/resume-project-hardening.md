@@ -31,11 +31,11 @@ RRF(chunk) = 1 / (60 + dense_rank) + 1 / (60 + bm25_rank)
 
 ### 3. 删除和重建索引形成生命周期闭环
 
-- 删除：先删除 Chroma 中指定 `document_id` 的向量，再删除 SQLite 元数据、指纹和可选本地文件；路径删除前检查必须位于 `data/uploads` 或 `data/mineru_output` 下。
+- 删除：先删除 Chroma 中指定 `document_id` 的向量，再删除 PostgreSQL 元数据、指纹和可选本地文件；路径删除前检查必须位于 `data/uploads` 或 `data/mineru_output` 下。
 - 重建：复用原始文件和原 `document_id`，新 chunk 成功写入后才删除旧向量。解析失败时保留旧向量和源文件，用户可以再次重建。
 - 过滤：问答请求支持按 `document_id` 或精确文件名限制检索范围。
 
-SQLite 和 Chroma 仍然没有跨存储事务，所以删除和重建只能通过顺序操作、进程内写锁和异常补偿减少不一致窗口。
+PostgreSQL 和 Chroma 仍然没有跨存储事务，所以删除和重建只能通过顺序操作、进程内写锁和异常补偿减少不一致窗口。
 
 ### 4. 让故障可排查
 

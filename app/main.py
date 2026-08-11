@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 
 from app.api.routes import router
 from app.core.config import settings
-from app.storage.database import init_db
+from app.storage.database import check_database_connection, init_db
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -21,8 +21,9 @@ logger = logging.getLogger("rag.request")
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """启动时创建数据目录和 SQLite 表，关闭时交给进程管理器回收资源。"""
+    """启动时检查 PostgreSQL、创建数据目录和业务表。"""
     settings.ensure_dirs()
+    check_database_connection()
     init_db()
     yield
 

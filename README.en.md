@@ -13,7 +13,7 @@ This is a runnable demo prototype, not a production system. It does not claim re
 - DeepSeek Chat and Qwen `text-embedding-v4`
 - Alibaba Cloud Model Studio OpenAI-compatible Embedding API
 - MinerU official API token workflow
-- Chroma vector database and SQLite
+- Chroma vector database and PostgreSQL metadata storage
 - RAGAS with DeepSeek as judge model
 - Native HTML / CSS / JavaScript frontend
 - uv for dependency and environment management
@@ -53,7 +53,7 @@ app/
   services/rag_service.py        Standard RAG flow
   services/vector_store_service.py Vector store status, debug, and cleanup
   static/                        Native web console
-  storage/database.py            SQLite metadata and chat history
+  storage/database.py            PostgreSQL metadata and chat history
 eval_data/
   ragas_eval_dataset.json        RAGAS evaluation dataset
 sample_docs/

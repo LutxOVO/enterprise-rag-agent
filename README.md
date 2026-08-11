@@ -26,7 +26,7 @@ flowchart LR
     RRF --> PROMPT[上下文拼接与 Prompt 防注入]
     PROMPT --> LLM[DeepSeek Chat]
     LLM --> ANSWER[回答与来源 chunks]
-    API --> SQLITE[(SQLite 状态、批次、指纹)]
+    API --> POSTGRES[(PostgreSQL 状态、批次、指纹、对话)]
     API --> EVAL[RAGAS + Hit@K/MRR 离线评估]
 ```
 
@@ -46,13 +46,14 @@ RAGAS 对比图不预置虚构数字。使用目标 PDF 跑完同一批问题的
 
 ## 3 分钟启动
 
-在 PowerShell 中执行：
+在 PowerShell 中执行。现在业务数据库是 PostgreSQL，首次本地启动前需要先启动 Compose 中的数据库服务：
 
 ```powershell
 cd D:\pycharm项目\RAG
 uv sync --frozen
 copy .env.example .env
 # 编辑 .env，至少填写 QWEN_API_KEY、DEEPSEEK_API_KEY 和 MINERU_API_TOKEN
+docker compose up -d postgres
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
@@ -72,7 +73,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/health
 - Qwen `text-embedding-v4` Embedding
 - 阿里云百炼 OpenAI-compatible Embedding 接口
 - MinerU 官方 API Token
-- Chroma 向量库、SQLite
+- Chroma 向量库、PostgreSQL、SQLAlchemy、psycopg
 - RAGAS、DeepSeek Judge Model
 - 原生 HTML / CSS / JavaScript 前端
 - uv 环境管理
@@ -118,7 +119,7 @@ app/
   services/rag_service.py       普通 RAG 问答流程
   services/vector_store_service.py 向量库状态、调试和清理服务
   static/                       原生 Web 控制台
-  storage/database.py           SQLite 文档、对话、批次和文件指纹
+  storage/database.py           PostgreSQL 文档、对话、批次和文件指纹
 eval_data/
   ai_agents_in_depth_eval_dataset.json  AI Agent PDF 专用评测集（60 条）
   ragas_ab_dataset.json         旧版公司手册 A/B 数据集（保留作示例）
@@ -128,12 +129,14 @@ scripts/
   smoke_test.py                 冒烟测试
   evaluate_ragas.py             命令行 RAGAS 评估
   compare_evaluations.py        baseline / hyde_rewrite 汇总对比
+  migrate_sqlite_to_postgres.py 一次性迁移旧 SQLite 元数据
 tests/
   test_*.py                     上传、检索、API、重建和安全测试
 docs/
   batch-upload-engineering.md   批量上传工程闭环和优化思路
   mineru-pdf-processing.md      MinerU 大 PDF 自动拆分和合并说明
   docker-deployment.md          Docker 部署、数据卷和排错说明
+  postgresql-migration.md       SQLite 到 PostgreSQL 迁移说明
   ai-agents-in-depth-evaluation.md  AI Agent PDF 评测集说明和运行方法
   resume-project-hardening.md   简历项目补强路线和技术取舍
   copyright.md                  示例数据与版权边界
@@ -177,6 +180,12 @@ copy .env.example .env
 核心配置示例：
 
 ```env
+DATABASE_URL="postgresql+psycopg://rag:rag_learning_password@localhost:5432/rag"
+POSTGRES_DB="rag"
+POSTGRES_USER="rag"
+POSTGRES_PASSWORD="rag_learning_password"
+POSTGRES_PORT=5432
+
 EMBEDDING_PROVIDER="qwen"
 CHAT_PROVIDER="deepseek"
 
@@ -221,7 +230,7 @@ MinerU 官方接口单次请求有页数限制。项目通过 `MINERU_MAX_PAGES_
 
 ## Docker 部署
 
-Docker 部署只把当前 FastAPI 应用放进容器，Qwen Embedding、DeepSeek 和 MinerU 仍然通过 `.env` 调用云端 API。SQLite、Chroma、上传文件和 MinerU 输出都挂载到宿主机的 `data/` 目录。
+Docker 部署由 FastAPI `rag` 和 PostgreSQL 两个容器组成。Qwen Embedding、DeepSeek 和 MinerU 仍然通过 `.env` 调用云端 API。PostgreSQL 使用命名卷持久化，Chroma、上传文件和 MinerU 输出挂载到宿主机的 `data/` 目录。
 
 前置条件：安装并启动 Docker Desktop，并确认使用 Linux containers。第一次部署前复制配置文件并填写 API Key：
 
@@ -260,7 +269,7 @@ docker compose logs -f rag
 docker compose down
 ```
 
-`docker compose down` 不会删除宿主机的 `data/`，因此重新启动后 SQLite、Chroma 和已上传文件仍然存在。默认宿主机端口是 `8000`，如果端口被占用，可以在 `.env` 中设置 `RAG_PORT=8001` 后重新执行 `docker compose up -d`。
+`docker compose down` 不会删除 `postgres_data` 命名卷或宿主机的 `data/`，因此重新启动后 PostgreSQL、Chroma 和已上传文件仍然存在。默认宿主机端口是 `8000`，数据库端口是 `5432`；如果端口被占用，可以在 `.env` 中设置 `RAG_PORT` 或 `POSTGRES_PORT` 后重新执行 `docker compose up -d`。
 
 Dockerfile 使用依赖文件独立缓存层：修改 Python 代码时不需要重新安装全部依赖。`.env` 不会复制进镜像，而是由 Compose 在启动容器时注入。
 
@@ -328,7 +337,7 @@ curl.exe -X POST "http://127.0.0.1:8000/api/documents/<document_id>/reindex"
 
 ### 批量上传与工程闭环
 
-批量接口会先分块保存文件并计算 SHA-256，再按“解析 -> 切分 -> Embedding -> Chroma -> SQLite 登记”的阶段处理。相同内容会标记为 `duplicate` 并计入 `skipped`，不会重复调用外部解析和向量服务。
+批量接口会先分块保存文件并计算 SHA-256，再按“解析 -> 切分 -> Embedding -> Chroma -> PostgreSQL 登记”的阶段处理。相同内容会标记为 `duplicate` 并计入 `skipped`，不会重复调用外部解析和向量服务。
 
 ```http
 POST /api/documents/upload-batch

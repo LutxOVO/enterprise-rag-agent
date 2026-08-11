@@ -1,4 +1,26 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rag}
+      POSTGRES_USER: ${POSTGRES_USER:-rag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rag_learning_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # PostgreSQL 业务数据使用独立命名卷，不和 Chroma/上传文件混在一起。
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-rag} -d ${POSTGRES_DB:-rag}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   rag:
     build:
       context: .
@@ -6,12 +28,16 @@ services:
     env_file:
       - .env
     environment:
-      # 使用容器内绝对路径，避免工作目录变化导致 SQLite 或 Chroma 写到错误位置。
+      # 容器内使用服务名 postgres；宿主机本地运行时请使用 localhost。
       DATA_DIR: /app/data
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rag}:${POSTGRES_PASSWORD:-rag_learning_password}@postgres:5432/${POSTGRES_DB:-rag}
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "${RAG_PORT:-8000}:8000"
     volumes:
-      # 宿主机 data 目录保存 SQLite、Chroma、上传文件和 MinerU 输出。
+      # 宿主机 data 目录保存 Chroma、上传文件和 MinerU 输出。
       - ./data:/app/data
     restart: unless-stopped
     healthcheck:
@@ -26,3 +52,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+
+volumes:
+  postgres_data:

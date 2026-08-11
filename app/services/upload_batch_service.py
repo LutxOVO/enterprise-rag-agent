@@ -238,7 +238,7 @@ async def retry_batch_item(batch_id: str, item_id: str) -> BatchUploadResponse:
     if not reservation["reserved"]:
         raise HTTPException(status_code=409, detail="This document is already being processed by another task.")
 
-    # 上次失败可能发生在 Chroma 已写入、SQLite 状态未成功更新之后；重试前先做补偿清理。
+    # 上次失败可能发生在 Chroma 已写入、PostgreSQL 状态未成功更新之后；重试前先做补偿清理。
     DocumentService().remove_document_vectors(str(reservation["document_id"]))
 
     retry_count = int(item["retry_count"] or 0) + 1

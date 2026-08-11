@@ -10,6 +10,12 @@ class Settings(BaseSettings):
     app_name: str = "Enterprise Knowledge Base RAG Agent"
     data_dir: Path = Path("data")
 
+    # PostgreSQL 是项目唯一的运行时业务数据库；没有配置时启动会给出明确错误。
+    database_url: str = ""
+    database_pool_size: int = 5
+    database_max_overflow: int = 10
+    database_pool_timeout: int = 30
+
     embedding_provider: str = "qwen"
     chat_provider: str = "deepseek"
 
@@ -77,10 +83,6 @@ class Settings(BaseSettings):
     @property
     def mineru_output_dir(self) -> Path:
         return self.data_dir / "mineru_output"
-
-    @property
-    def sqlite_db_path(self) -> Path:
-        return self.data_dir / "app.db"
 
     @property
     def max_upload_file_size_bytes(self) -> int:

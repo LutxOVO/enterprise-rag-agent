@@ -6,7 +6,7 @@
 
 - 面向企业文档问答场景，搭建“文档上传 -> MinerU 解析 -> Markdown 结构化切分 -> Qwen Embedding -> Chroma 检索 -> DeepSeek 生成”的完整 RAG 流程，支持 PDF、Office、图片、HTML、Markdown 和文本文件。
 - 针对复杂文档保留 Markdown 标题 metadata 并进行递归二次切分；实现 Dense 检索与 BM25 + Dense 的 RRF 混合检索，返回 `document_id`、文件名、chunk、score 等来源信息，支持按文档过滤和答案溯源。
-- 面向批量导入实现 SHA-256 内容幂等去重、文件级状态机、部分失败隔离、补偿清理和失败重试；增加单文档删除、原文件重建索引、SQLite/Chroma 状态一致性处理和 Docker Compose 持久化部署。
+- 面向批量导入实现 SHA-256 内容幂等去重、文件级状态机、部分失败隔离、补偿清理和失败重试；增加单文档删除、原文件重建索引、PostgreSQL/Chroma 状态一致性处理和 Docker Compose 双容器持久化部署。
 - 使用 LangGraph 编排轻量工具路由和 Dynamic RAG 工作流，在回答前完成 Query Rewrite、HyDE、上下文充分性判断和 Prompt Injection 防护；通过 FastAPI 提供普通问答、SSE 流式输出、检索调试和文档管理接口。
 - 构建包含 60 条问题和标准答案的评测集，先用同一批 10 条问题进行 baseline 与 Query Rewrite + HyDE 首轮 A/B 评估，记录 Faithfulness、Answer Relevancy、Context Precision、Context Recall、Hit@K、MRR、空值数和阶段耗时；通过 pytest、API 契约测试、smoke test、CI 和结构化请求日志增强可验证性。
 
@@ -21,7 +21,7 @@
 ## 项目边界
 
 - 当前定位是本地学习和演示项目，不虚构真实公司经历、用户量或生产收益。
-- MinerU、Qwen、DeepSeek 均通过云端 API 调用；SQLite 和 Chroma 适合单机演示，不宣称支持分布式生产部署。
+- MinerU、Qwen、DeepSeek 均通过云端 API 调用；PostgreSQL 和 Chroma 适合单机演示，不宣称支持高可用生产集群。
 - Agent 部分是可观测的 LangGraph 路由和工具工作流，不表述为完全自主的生产 Agent。
 - RAGAS 是离线评估链路，不放入高频用户请求路径。
 

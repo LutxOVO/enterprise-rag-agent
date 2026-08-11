@@ -6,7 +6,7 @@
 
 ```text
 app/main.py
-  FastAPI 应用入口，负责创建 app、注册路由、挂载静态页面、启动时初始化目录和 SQLite。
+  FastAPI 应用入口，负责创建 app、注册路由、挂载静态页面、启动时初始化目录和 PostgreSQL。
 
 app/schemas.py
   Pydantic 请求体和响应体定义，例如 AskRequest、AgentRequest、AgentResponse。
@@ -32,7 +32,7 @@ app/api/routes.py
 
 ```text
 app/services/document_service.py
-  文档上传、文本提取、切分、写入 Chroma 和 SQLite。
+  文档上传、文本提取、切分、写入 Chroma 和 PostgreSQL。
 
 app/services/rag_service.py
   普通 RAG 问答和流式 RAG 问答。
@@ -130,7 +130,7 @@ app/rag/text_splitter.py
 
 ```text
 app/storage/database.py
-  SQLite 初始化和读写。
+  PostgreSQL 连接池、初始化和读写。
 
   表：
   documents
@@ -193,7 +193,7 @@ app/agent/
 我要看 Chroma 检索
   -> app/rag/vector_store.py
 
-我要看 SQLite 存储
+我要看 PostgreSQL 存储
   -> app/storage/database.py
 
 我要看前端按钮调用哪个接口
