@@ -13,7 +13,6 @@ from app.services.document_service import DocumentService, SavedUpload, VECTOR_W
 from app.storage.database import (
     delete_document_record,
     get_document,
-    get_document_fingerprint,
     reserve_document_fingerprint,
     set_document_fingerprint_status,
     upsert_document_fingerprint,
@@ -47,7 +46,7 @@ def delete_document(document_id: str, delete_files: bool = True) -> DeleteDocume
 
 async def reindex_document(document_id: str) -> ReindexDocumentResponse:
     """复用原文件重新解析和入库，成功后清理同一文档的旧 chunk。"""
-    document = get_document(document_id)
+    document = await asyncio.to_thread(get_document, document_id)
     if document is None:
         raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
 
@@ -60,38 +59,35 @@ async def reindex_document(document_id: str) -> ReindexDocumentResponse:
 
     started = time.perf_counter()
     file_hash = await asyncio.to_thread(_sha256_file, source_path)
-    reservation = reserve_document_fingerprint(
+    reservation = await asyncio.to_thread(
+        reserve_document_fingerprint,
         file_hash,
         document_id,
         document["filename"],
         source_path,
     )
+    if not reservation["reserved"] and reservation.get("status") == "processing":
+        raise HTTPException(
+            status_code=409,
+            detail="This document is already being reindexed by another task.",
+        )
     if str(reservation["document_id"]) != document_id:
         raise HTTPException(
             status_code=409,
             detail=f"The current file content is already indexed as document {reservation['document_id']}.",
         )
-    fingerprint = get_document_fingerprint(document_id)
-    if fingerprint and fingerprint.get("file_hash") != file_hash:
-        # 文件内容在上次入库后发生变化，保留新 hash 并让重建后的内容成为幂等版本。
-        upsert_document_fingerprint(
-            file_hash,
-            document_id,
-            document["filename"],
-            source_path,
-            status="processing",
-        )
-    else:
-        upsert_document_fingerprint(
-            file_hash,
-            document_id,
-            document["filename"],
-            source_path,
-            status="processing",
-        )
+    # 文件内容可能已经变化；把当前 hash 作为该文档新的幂等版本登记下来。
+    await asyncio.to_thread(
+        upsert_document_fingerprint,
+        file_hash,
+        document_id,
+        document["filename"],
+        source_path,
+        status="processing",
+    )
 
     vector_store = ChromaVectorStore()
-    old_vector_ids = vector_store.get_ids_by_document_id(document_id)
+    old_vector_ids = await asyncio.to_thread(vector_store.get_ids_by_document_id, document_id)
     saved_upload = SavedUpload(
         document_id=document_id,
         filename=document["filename"],
@@ -106,14 +102,28 @@ async def reindex_document(document_id: str) -> ReindexDocumentResponse:
         # 保留旧向量直到新内容成功写入，重建失败时原知识库仍可回答问题。
         service = DocumentService(vector_store=vector_store)
         result = await asyncio.to_thread(service.ingest_saved_file, saved_upload)
-        with VECTOR_WRITE_LOCK:
-            vector_store.delete_by_ids(old_vector_ids)
-        set_document_fingerprint_status(file_hash, "indexed", source_path)
+        await asyncio.to_thread(_delete_vector_ids, vector_store, old_vector_ids)
+        await asyncio.to_thread(
+            set_document_fingerprint_status,
+            file_hash,
+            "indexed",
+            source_path,
+        )
     except HTTPException:
-        set_document_fingerprint_status(file_hash, "failed", source_path)
+        await asyncio.to_thread(
+            set_document_fingerprint_status,
+            file_hash,
+            "failed",
+            source_path,
+        )
         raise
     except Exception as exc:
-        set_document_fingerprint_status(file_hash, "failed", source_path)
+        await asyncio.to_thread(
+            set_document_fingerprint_status,
+            file_hash,
+            "failed",
+            source_path,
+        )
         raise HTTPException(status_code=500, detail=f"Reindex failed: {exc}") from exc
 
     return ReindexDocumentResponse(
@@ -124,6 +134,12 @@ async def reindex_document(document_id: str) -> ReindexDocumentResponse:
         duration_ms=int((time.perf_counter() - started) * 1000),
         message="The original file was parsed and indexed again.",
     )
+
+
+def _delete_vector_ids(vector_store: ChromaVectorStore, vector_ids: list[str]) -> None:
+    """在写锁内删除旧版本向量，避免阻塞异步事件循环。"""
+    with VECTOR_WRITE_LOCK:
+        vector_store.delete_by_ids(vector_ids)
 
 
 def _sha256_file(path: Path) -> str:

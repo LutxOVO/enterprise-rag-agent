@@ -2,6 +2,7 @@ from collections.abc import AsyncGenerator
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from app.core.deepseek import build_deepseek_chat_model
 from app.core.config import settings
 
 
@@ -51,16 +52,7 @@ def _build_chat_model(streaming: bool = False):
     if provider == "deepseek":
         if not settings.resolved_deepseek_api_key:
             raise RuntimeError("DeepSeek LLM requires DEEPSEEK_API_KEY in .env.")
-
-        from langchain_openai import ChatOpenAI
-
-        return ChatOpenAI(
-            model=settings.deepseek_chat_model,
-            api_key=settings.resolved_deepseek_api_key,
-            base_url=settings.deepseek_base_url,
-            temperature=0.2,
-            streaming=streaming,
-        )
+        return build_deepseek_chat_model(temperature=0.2, streaming=streaming)
 
     if provider == "openai":
         if not settings.openai_api_key:

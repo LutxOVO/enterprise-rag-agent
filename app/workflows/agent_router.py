@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.tools.rag_tools import query_document_list, query_system_status, search_knowledge_base
 from app.core.config import settings
+from app.core.deepseek import build_deepseek_chat_model
 
 
 RouteName = Literal["status", "documents", "knowledge"]
@@ -38,12 +39,7 @@ def _build_router_model() -> ChatOpenAI | None:
         )
 
     if provider == "deepseek" and settings.resolved_deepseek_api_key:
-        return ChatOpenAI(
-            model=settings.deepseek_chat_model,
-            api_key=settings.resolved_deepseek_api_key,
-            base_url=settings.deepseek_base_url,
-            temperature=0,
-        )
+        return build_deepseek_chat_model(temperature=0)
 
     if provider == "openai" and settings.openai_api_key:
         return ChatOpenAI(

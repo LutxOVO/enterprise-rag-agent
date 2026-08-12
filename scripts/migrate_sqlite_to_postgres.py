@@ -133,14 +133,15 @@ def migrate(
                 text(
                     """
                     INSERT INTO documents
-                    (document_id, filename, file_type, file_path, chunk_count, created_at)
-                    VALUES (:document_id, :filename, :file_type, :file_path, :chunk_count, :created_at)
+                    (document_id, filename, file_type, file_path, chunk_count, created_at, updated_at)
+                    VALUES (:document_id, :filename, :file_type, :file_path, :chunk_count,
+                            :created_at, :updated_at)
                     ON CONFLICT (document_id) DO UPDATE SET
                         filename = EXCLUDED.filename,
                         file_type = EXCLUDED.file_type,
                         file_path = EXCLUDED.file_path,
                         chunk_count = EXCLUDED.chunk_count,
-                        created_at = EXCLUDED.created_at
+                        updated_at = EXCLUDED.updated_at
                     """
                 ),
                 {
@@ -152,6 +153,7 @@ def migrate(
                     ),
                     "chunk_count": int(row.get("chunk_count") or 0),
                     "created_at": row.get("created_at") or "",
+                    "updated_at": row.get("updated_at") or row.get("created_at") or "",
                 },
             )
 
@@ -212,20 +214,21 @@ def migrate(
                 },
             )
 
-        for row in items:
+        for item_order, row in enumerate(items):
             connection.execute(
                 text(
                     """
                     INSERT INTO upload_batch_items
-                    (item_id, batch_id, document_id, filename, file_type, file_hash, file_path,
+                    (item_id, batch_id, item_order, document_id, filename, file_type, file_hash, file_path,
                      status, error_stage, error_message, chunk_count, duration_ms, retry_count,
                      duplicate_of_document_id, created_at, updated_at)
-                    VALUES (:item_id, :batch_id, :document_id, :filename, :file_type, :file_hash,
-                            :file_path, :status, :error_stage, :error_message, :chunk_count,
+                    VALUES (:item_id, :batch_id, :item_order, :document_id, :filename, :file_type,
+                            :file_hash, :file_path, :status, :error_stage, :error_message, :chunk_count,
                             :duration_ms, :retry_count, :duplicate_of_document_id,
                             :created_at, :updated_at)
                     ON CONFLICT (item_id) DO UPDATE SET
                         batch_id = EXCLUDED.batch_id,
+                        item_order = EXCLUDED.item_order,
                         document_id = EXCLUDED.document_id,
                         filename = EXCLUDED.filename,
                         file_type = EXCLUDED.file_type,
@@ -245,6 +248,7 @@ def migrate(
                 {
                     "item_id": row["item_id"],
                     "batch_id": row["batch_id"],
+                    "item_order": int(row["item_order"]) if row.get("item_order") is not None else item_order,
                     "document_id": row.get("document_id"),
                     "filename": row["filename"],
                     "file_type": row["file_type"],

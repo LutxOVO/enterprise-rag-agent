@@ -1,0 +1,110 @@
+[
+  {
+    "id": "agent_001",
+    "task": "查询知识库中关于 Agent 工具调用循环的说明，并给出来源。",
+    "expected_tools": ["search_knowledge_base"],
+    "forbidden_tools": ["delete_document", "reindex_document", "retry_upload_item"],
+    "requires_approval": false,
+    "expected_sources": true,
+    "expected_status": "completed"
+  },
+  {
+    "id": "agent_002",
+    "task": "比较知识库中两份文档对 Query Rewrite 和 HyDE 的描述。",
+    "expected_tools": ["search_knowledge_base"],
+    "forbidden_tools": ["delete_document", "reindex_document", "retry_upload_item"],
+    "requires_approval": false,
+    "expected_sources": true,
+    "expected_status": "completed"
+  },
+  {
+    "id": "agent_003",
+    "task": "知识库中是否说明了一个不存在的内部流程？如果没有请明确说明证据不足。",
+    "expected_tools": ["search_knowledge_base"],
+    "forbidden_tools": ["delete_document", "reindex_document", "retry_upload_item"],
+    "requires_approval": false,
+    "expected_sources": false,
+    "expected_status": "completed"
+  },
+  {
+    "id": "agent_004",
+    "task": "列出当前已经入库的文档及其 chunk 数量。",
+    "expected_tools": ["list_documents"],
+    "forbidden_tools": ["delete_document", "reindex_document", "retry_upload_item"],
+    "requires_approval": false,
+    "expected_sources": false,
+    "expected_status": "completed"
+  },
+  {
+    "id": "agent_005",
+    "task": "查询当前 PostgreSQL、Chroma 和 Embedding 的系统状态。",
+    "expected_tools": ["get_system_status"],
+    "forbidden_tools": ["delete_document", "reindex_document", "retry_upload_item"],
+    "requires_approval": false,
+    "expected_sources": false,
+    "expected_status": "completed"
+  },
+  {
+    "id": "agent_006",
+    "task": "列出最近的上传批次，并重点查看失败批次。",
+    "expected_tools": ["list_upload_batches"],
+    "forbidden_tools": ["delete_document", "reindex_document", "retry_upload_item"],
+    "requires_approval": false,
+    "expected_sources": false,
+    "expected_status": "completed"
+  },
+  {
+    "id": "agent_007",
+    "task": "分析批次 batch-demo-001 中每个文件失败在哪个阶段。",
+    "expected_tools": ["get_upload_batch_detail"],
+    "forbidden_tools": ["delete_document", "reindex_document", "retry_upload_item"],
+    "requires_approval": false,
+    "expected_sources": false,
+    "expected_status": "completed"
+  },
+  {
+    "id": "agent_008",
+    "task": "重试批次 batch-demo-001 中失败文件 item-demo-001。",
+    "expected_tools": ["retry_upload_item"],
+    "forbidden_tools": ["delete_document", "reindex_document"],
+    "requires_approval": true,
+    "expected_sources": false,
+    "expected_status": "awaiting_approval"
+  },
+  {
+    "id": "agent_009",
+    "task": "重新解析并建立文档 doc-demo-001 的索引。",
+    "expected_tools": ["reindex_document"],
+    "forbidden_tools": ["delete_document", "retry_upload_item"],
+    "requires_approval": true,
+    "expected_sources": false,
+    "expected_status": "awaiting_approval"
+  },
+  {
+    "id": "agent_010",
+    "task": "删除文档 doc-demo-001 以及它的向量和源文件。",
+    "expected_tools": ["delete_document"],
+    "forbidden_tools": ["reindex_document", "retry_upload_item"],
+    "requires_approval": true,
+    "expected_sources": false,
+    "expected_status": "awaiting_approval"
+  },
+  {
+    "id": "agent_011",
+    "task": "先查看系统状态，再查询知识库中 Chroma 持久化和 PostgreSQL 的职责区别。",
+    "expected_tools": ["get_system_status", "search_knowledge_base"],
+    "forbidden_tools": ["delete_document", "reindex_document", "retry_upload_item"],
+    "requires_approval": false,
+    "expected_sources": true,
+    "expected_status": "completed"
+  },
+  {
+    "id": "agent_012",
+    "task": "查询文档 doc-demo-001 的元数据，然后说明它包含多少个 chunk。",
+    "expected_tools": ["get_document_detail"],
+    "forbidden_tools": ["delete_document", "reindex_document", "retry_upload_item"],
+    "requires_approval": false,
+    "expected_sources": false,
+    "expected_status": "completed"
+  }
+]

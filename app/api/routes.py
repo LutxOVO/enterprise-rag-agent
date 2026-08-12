@@ -1,10 +1,18 @@
+import json
+
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
+from app.agent.checkpoint import agent_checkpoint_runtime
+from app.agent.graph import model_is_configured
 from app.core.config import settings
 from app.schemas import (
+    AgentRunRequest,
     AgentRequest,
     AgentResponse,
+    AgentResumeRequest,
+    AgentStateResponse,
+    AgentThreadDeleteResponse,
     AskRequest,
     AskResponse,
     BatchUploadResponse,
@@ -20,7 +28,10 @@ from app.schemas import (
     UploadBatchSummary,
     VectorChunkListResponse,
 )
-from app.services.agent_service import AgentService
+from app.services.agent_service import (
+    AgentServiceError,
+    agent_service,
+)
 from app.services.document_service import DocumentService
 from app.services.document_management_service import delete_document, reindex_document
 from app.services.evaluation_service import (
@@ -50,7 +61,15 @@ def health() -> dict:
         check_database_connection()
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"PostgreSQL is unavailable: {exc}") from exc
-    return {"status": "ok", "app": settings.app_name}
+    return {
+        "status": "ok",
+        "app": settings.app_name,
+        "agent": {
+            "checkpointer_ready": agent_checkpoint_runtime.ready,
+            "model_configured": model_is_configured(),
+            "ready": agent_service.ready,
+        },
+    }
 
 
 @router.post("/documents/upload", response_model=UploadResponse)
@@ -169,9 +188,97 @@ async def ask_stream(request: AskRequest) -> StreamingResponse:
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
+def _raise_agent_http(exc: AgentServiceError) -> None:
+    detail: dict[str, object] = {"message": exc.detail, **exc.payload}
+    raise HTTPException(status_code=exc.status_code, detail=detail) from exc
+
+
+def _encode_sse(event: dict) -> str:
+    return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+
+async def _agent_sse(events):
+    try:
+        async for event in events:
+            yield _encode_sse(event)
+    except AgentServiceError as exc:
+        yield _encode_sse({"event": "error", "message": exc.detail, **exc.payload})
+        yield _encode_sse({"event": "done", "status": "failed"})
+
+
+@router.post("/agent/runs/stream")
+async def agent_run_stream(request: AgentRunRequest) -> StreamingResponse:
+    try:
+        reserved_lock = await agent_service.reserve_new_run(request.thread_id)
+    except AgentServiceError as exc:
+        _raise_agent_http(exc)
+    return StreamingResponse(
+        _agent_sse(
+            agent_service.run_stream(
+                request.input,
+                request.thread_id,
+                web_search_enabled=request.web_search_enabled,
+                reserved_lock=reserved_lock,
+            )
+        ),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/agent/threads/{thread_id}/resume/stream")
+async def agent_resume_stream(thread_id: str, request: AgentResumeRequest) -> StreamingResponse:
+    try:
+        reserved_lock = await agent_service.reserve_resume(
+            thread_id,
+            request.approval_id,
+            request.decision,
+        )
+    except AgentServiceError as exc:
+        _raise_agent_http(exc)
+    return StreamingResponse(
+        _agent_sse(
+            agent_service.resume_stream(
+                thread_id,
+                request.approval_id,
+                request.decision,
+                request.reason,
+                reserved_lock=reserved_lock,
+            )
+        ),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/agent/threads/{thread_id}/state", response_model=AgentStateResponse)
+async def agent_thread_state(thread_id: str) -> AgentStateResponse:
+    try:
+        state = await agent_service.get_state(thread_id)
+    except AgentServiceError as exc:
+        _raise_agent_http(exc)
+    return AgentStateResponse(**state)
+
+
+@router.delete("/agent/threads/{thread_id}", response_model=AgentThreadDeleteResponse)
+async def delete_agent_thread(thread_id: str) -> AgentThreadDeleteResponse:
+    try:
+        result = await agent_service.delete_thread(thread_id)
+    except AgentServiceError as exc:
+        _raise_agent_http(exc)
+    return AgentThreadDeleteResponse(**result)
+
+
 @router.post("/agent/invoke", response_model=AgentResponse)
-def agent_invoke(request: AgentRequest) -> AgentResponse:
-    result = AgentService().invoke(request.input, request.thread_id)
+async def agent_invoke(request: AgentRequest) -> AgentResponse:
+    try:
+        result = await agent_service.invoke(
+            request.input,
+            request.thread_id,
+            web_search_enabled=request.web_search_enabled,
+        )
+    except AgentServiceError as exc:
+        _raise_agent_http(exc)
     return AgentResponse(
         thread_id=request.thread_id,
         output=result["output"],
@@ -180,6 +287,9 @@ def agent_invoke(request: AgentRequest) -> AgentResponse:
             "route": result["route"],
             "route_reason": result.get("route_reason", ""),
             "graph_path": result.get("graph_path", []),
+            "status": result.get("status", "completed"),
+            "tool_trace": result.get("tool_trace", []),
+            "sources": result.get("sources", []),
         },
     )
 
@@ -187,6 +297,8 @@ def agent_invoke(request: AgentRequest) -> AgentResponse:
 @router.post("/agent/dynamic-rag", response_model=AgentResponse)
 def agent_dynamic_rag(request: AgentRequest) -> AgentResponse:
     """Answer with a LangGraph Dynamic RAG workflow: rewrite -> HyDE -> retrieve -> generate."""
+    from app.services.agent_service import AgentService
+
     result = AgentService().invoke_dynamic_rag(request.input, request.thread_id)
     return AgentResponse(
         thread_id=request.thread_id,

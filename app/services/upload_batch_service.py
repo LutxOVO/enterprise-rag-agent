@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -15,8 +16,7 @@ from app.schemas import (
 )
 from app.services.document_service import DocumentService, SavedUpload
 from app.storage.database import (
-    create_upload_batch,
-    create_upload_batch_item,
+    create_upload_batch_with_items,
     get_document,
     get_upload_batch,
     get_upload_batch_item,
@@ -27,6 +27,11 @@ from app.storage.database import (
     update_upload_batch_item,
 )
 from app.workflows.document_batch import build_document_batch_upload_graph
+
+
+async def _db_call(function: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    """把同步 SQLAlchemy 调用移出 FastAPI 事件循环。"""
+    return await asyncio.to_thread(function, *args, **kwargs)
 
 
 def _error_text(exc: Exception) -> str:
@@ -106,41 +111,103 @@ async def run_batch_upload(files: list[UploadFile]) -> BatchUploadResponse:
         )
 
     batch_id = uuid.uuid4().hex
-    create_upload_batch(batch_id, len(files))
-    document_service = DocumentService()
-    prepared_uploads: list[dict[str, Any]] = []
-
-    # 预处理阶段先把文件保存并登记指纹，再把真正可处理的文件交给 worker。
+    file_entries: list[dict[str, Any]] = []
     for file in files:
         item_id = uuid.uuid4().hex
         original_name = Path(file.filename or "unknown").name or "unknown"
         suffix = Path(original_name).suffix.lower()
-        file_type = suffix.lstrip(".") or "unknown"
-        create_upload_batch_item(item_id, batch_id, original_name, file_type)
+        file_entries.append(
+            {
+                "file": file,
+                "item_id": item_id,
+                "filename": original_name,
+                "file_type": suffix.lstrip(".") or "unknown",
+            }
+        )
+    await _db_call(
+        create_upload_batch_with_items,
+        batch_id,
+        [
+            {
+                "item_id": entry["item_id"],
+                "filename": entry["filename"],
+                "file_type": entry["file_type"],
+            }
+            for entry in file_entries
+        ],
+    )
+    document_service = DocumentService()
+    prepared_uploads: list[dict[str, Any]] = []
+    batch_reserved_documents: dict[str, str] = {}
+
+    # 预处理阶段先把文件保存并登记指纹，再把真正可处理的文件交给 worker。
+    for entry in file_entries:
+        file = entry["file"]
+        item_id = entry["item_id"]
+        original_name = entry["filename"]
         saved_upload: SavedUpload | None = None
         started = asyncio.get_running_loop().time()
 
         try:
-            update_upload_batch_item(item_id, status="saving")
+            await _db_call(update_upload_batch_item, item_id, status="saving")
             saved_upload = await document_service.save_upload_file(file, settings.upload_dir)
-            update_upload_batch_item(
+            await _db_call(
+                update_upload_batch_item,
                 item_id,
                 document_id=saved_upload.document_id,
                 file_hash=saved_upload.file_hash,
                 file_path=str(saved_upload.path),
             )
-            reservation = reserve_document_fingerprint(
+            reservation = await _db_call(
+                reserve_document_fingerprint,
                 saved_upload.file_hash,
                 saved_upload.document_id,
                 saved_upload.filename,
                 saved_upload.path,
             )
 
+            if (
+                not reservation["reserved"]
+                and reservation.get("status") == "processing"
+                and saved_upload.file_hash in batch_reserved_documents
+            ):
+                existing_id = batch_reserved_documents[saved_upload.file_hash]
+                document_service.cleanup_saved_upload(saved_upload)
+                await _db_call(
+                    update_upload_batch_item,
+                    item_id,
+                    document_id=existing_id,
+                    status="duplicate",
+                    duplicate_of_document_id=existing_id,
+                    file_path=None,
+                    duration_ms=int((asyncio.get_running_loop().time() - started) * 1000),
+                    error_stage=None,
+                    error_message=None,
+                )
+                continue
+
+            if not reservation["reserved"] and reservation.get("status") == "processing":
+                document_service.cleanup_saved_upload(saved_upload)
+                await _db_call(
+                    update_upload_batch_item,
+                    item_id,
+                    status="failed",
+                    error_stage="deduplication",
+                    error_message=(
+                        "The same file content is currently being processed by another task; "
+                        "retry this item after that task finishes."
+                    ),
+                    duration_ms=int((asyncio.get_running_loop().time() - started) * 1000),
+                    file_path=None,
+                )
+                continue
+
             if not reservation["reserved"]:
                 existing_id = str(reservation["document_id"])
-                existing = get_document(existing_id) or {}
+                existing = await _db_call(get_document, existing_id) or {}
                 document_service.cleanup_saved_upload(saved_upload)
-                update_upload_batch_item(
+                await _db_call(
+                    update_upload_batch_item,
                     item_id,
                     document_id=existing_id,
                     status="duplicate",
@@ -155,13 +222,25 @@ async def run_batch_upload(files: list[UploadFile]) -> BatchUploadResponse:
 
             # 失败指纹重试时沿用原 document_id，避免同一个内容产生多个逻辑文档。
             saved_upload.document_id = str(reservation["document_id"])
+            batch_reserved_documents[saved_upload.file_hash] = saved_upload.document_id
             prepared_uploads.append({"item_id": item_id, "saved_upload": saved_upload})
-            update_upload_batch_item(item_id, status="queued", document_id=saved_upload.document_id)
+            await _db_call(
+                update_upload_batch_item,
+                item_id,
+                status="queued",
+                document_id=saved_upload.document_id,
+            )
         except Exception as exc:
             if saved_upload is not None:
                 document_service.cleanup_saved_upload(saved_upload)
-                set_document_fingerprint_status(saved_upload.file_hash, "failed", saved_upload.path)
-            update_upload_batch_item(
+                await _db_call(
+                    set_document_fingerprint_status,
+                    saved_upload.file_hash,
+                    "failed",
+                    saved_upload.path,
+                )
+            await _db_call(
+                update_upload_batch_item,
                 item_id,
                 status="failed",
                 error_stage="validation" if isinstance(exc, HTTPException) else "saving",
@@ -188,24 +267,31 @@ async def run_batch_upload(files: list[UploadFile]) -> BatchUploadResponse:
             # 工作流本身异常时，只标记仍处于非终态的文件，已经成功的文件不回滚。
             graph_path = [*graph_path, f"workflow_failed:{type(exc).__name__}", "END"]
             for prepared in prepared_uploads:
-                item = get_upload_batch_item(prepared["item_id"])
+                item = await _db_call(get_upload_batch_item, prepared["item_id"])
                 if item and item["status"] not in {"indexed", "duplicate", "failed"}:
                     saved_upload = prepared["saved_upload"]
-                    set_document_fingerprint_status(saved_upload.file_hash, "failed", saved_upload.path)
-                    update_upload_batch_item(
+                    await _db_call(
+                        set_document_fingerprint_status,
+                        saved_upload.file_hash,
+                        "failed",
+                        saved_upload.path,
+                    )
+                    await _db_call(
+                        update_upload_batch_item,
                         prepared["item_id"],
                         status="failed",
                         error_stage="workflow",
                         error_message=_error_text(exc),
                     )
 
-    refresh_upload_batch(batch_id, graph_path=[*graph_path, "END"] if graph_path[-1] != "END" else graph_path)
-    return build_batch_response(batch_id)
+    final_graph_path = [*graph_path, "END"] if graph_path[-1] != "END" else graph_path
+    await _db_call(refresh_upload_batch, batch_id, graph_path=final_graph_path)
+    return await _db_call(build_batch_response, batch_id)
 
 
 async def retry_batch_item(batch_id: str, item_id: str) -> BatchUploadResponse:
-    batch = get_upload_batch(batch_id)
-    item = get_upload_batch_item(item_id)
+    batch = await _db_call(get_upload_batch, batch_id)
+    item = await _db_call(get_upload_batch_item, item_id)
     if batch is None or item is None or item["batch_id"] != batch_id:
         raise HTTPException(status_code=404, detail="Upload batch item not found.")
     if item["status"] != "failed":
@@ -229,7 +315,8 @@ async def retry_batch_item(batch_id: str, item_id: str) -> BatchUploadResponse:
         file_hash = hasher.hexdigest()
 
     document_id = item.get("document_id") or uuid.uuid4().hex
-    reservation = reserve_document_fingerprint(
+    reservation = await _db_call(
+        reserve_document_fingerprint,
         file_hash,
         document_id,
         item["filename"],
@@ -239,10 +326,14 @@ async def retry_batch_item(batch_id: str, item_id: str) -> BatchUploadResponse:
         raise HTTPException(status_code=409, detail="This document is already being processed by another task.")
 
     # 上次失败可能发生在 Chroma 已写入、PostgreSQL 状态未成功更新之后；重试前先做补偿清理。
-    DocumentService().remove_document_vectors(str(reservation["document_id"]))
+    await asyncio.to_thread(
+        DocumentService().remove_document_vectors,
+        str(reservation["document_id"]),
+    )
 
     retry_count = int(item["retry_count"] or 0) + 1
-    update_upload_batch_item(
+    await _db_call(
+        update_upload_batch_item,
         item_id,
         document_id=str(reservation["document_id"]),
         file_hash=file_hash,
@@ -275,13 +366,14 @@ async def retry_batch_item(batch_id: str, item_id: str) -> BatchUploadResponse:
         )
         graph_path = result.get("graph_path", ["retry", "END"])
     except Exception as exc:
-        set_document_fingerprint_status(file_hash, "failed", file_path)
-        update_upload_batch_item(
+        await _db_call(set_document_fingerprint_status, file_hash, "failed", file_path)
+        await _db_call(
+            update_upload_batch_item,
             item_id,
             status="failed",
             error_stage="workflow",
             error_message=_error_text(exc),
         )
         graph_path = ["retry_start", f"workflow_failed:{type(exc).__name__}", "END"]
-    refresh_upload_batch(batch_id, graph_path=graph_path)
-    return build_batch_response(batch_id)
+    await _db_call(refresh_upload_batch, batch_id, graph_path=graph_path)
+    return await _db_call(build_batch_response, batch_id)

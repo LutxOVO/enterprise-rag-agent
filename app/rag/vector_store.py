@@ -18,6 +18,9 @@ class SearchResult:
     retrieval_strategy: str = "dense"
     dense_rank: int | None = None
     bm25_rank: int | None = None
+    # Hybrid 的 score 是 RRF 排名分数，不代表语义相似度；保留 Chroma 原始 cosine distance
+    # 供可信度门控使用。distance 越小，表示向量语义越接近。
+    dense_distance: float | None = None
 
 
 @dataclass
@@ -137,6 +140,7 @@ class ChromaVectorStore:
                 score=float(score),
                 retrieval_strategy="dense",
                 dense_rank=rank,
+                dense_distance=float(score),
             )
             for rank, (document, score) in enumerate(scored_documents, start=1)
         ]
@@ -202,6 +206,11 @@ class ChromaVectorStore:
                     retrieval_strategy="hybrid",
                     dense_rank=dense_rank,
                     bm25_rank=bm25_rank,
+                    dense_distance=(
+                        dense_by_key[key].dense_distance
+                        if key in dense_by_key
+                        else None
+                    ),
                 )
             )
 

@@ -6,7 +6,7 @@
 
 ```text
 app/main.py
-  FastAPI 应用入口，负责创建 app、注册路由、挂载静态页面、启动时初始化目录和 PostgreSQL。
+  FastAPI 应用入口，负责创建 app、注册路由、挂载静态页面、启动 PostgreSQL 业务库和 Agent checkpoint。
 
 app/schemas.py
   Pydantic 请求体和响应体定义，例如 AskRequest、AgentRequest、AgentResponse。
@@ -23,6 +23,9 @@ app/api/routes.py
   /api/documents/upload-batch
   /api/rag/ask
   /api/rag/stream
+  /api/agent/runs/stream
+  /api/agent/threads/{thread_id}/resume/stream
+  /api/agent/threads/{thread_id}/state
   /api/agent/invoke
   /api/agent/dynamic-rag
   /api/evaluation/ragas/run
@@ -38,7 +41,7 @@ app/services/rag_service.py
   普通 RAG 问答和流式 RAG 问答。
 
 app/services/agent_service.py
-  Agent 接口服务层，负责调用 LangGraph workflow，并保存对话历史。
+  Agent 工具循环、SSE 事件、同 thread 串行锁、审批校验和 checkpoint 恢复。
 
 app/services/vector_store_service.py
   向量库状态、chunk 列表、清空知识库。
@@ -50,11 +53,28 @@ app/services/mineru_client.py
   MinerU API 文档解析客户端。
 ```
 
-## LangGraph 工作流层
+## LangGraph 图和工作流层
+
+```text
+app/agent/graph.py
+  新的企业知识运营 Agent 图。
+
+  流程：
+  agent(model)
+    -> tools(ToolNode)
+    -> record_tool_activity
+    -> agent
+    -> finalize / limit
+
+  写工具在 ToolNode 内部调用 interrupt()，服务层使用 Command(resume=...) 恢复。
+
+app/agent/checkpoint.py
+  AsyncPostgresSaver 连接生命周期和幂等 setup。
+```
 
 ```text
 app/workflows/agent_router.py
-  LangGraph Agent 路由工作流。
+  旧版固定路由 Agent，保留作历史学习材料和兼容代码；默认入口已经迁移到 app/agent/graph.py。
 
   流程：
   route_intent
@@ -101,8 +121,11 @@ app/workflows/document_batch.py
 ## Tool 层
 
 ```text
+app/agent/tools.py
+  新 Agent 对外暴露的知识检索、文档查询、批次查询和审批写工具。
+
 app/tools/rag_tools.py
-  LangChain tool 定义。
+  旧版 RAG 工具兼容目录。
 
   包含：
   search_knowledge_base
@@ -137,7 +160,10 @@ app/storage/database.py
     文档元数据
 
   messages
-    对话历史
+    旧 RAG 和兼容接口对话历史
+
+  LangGraph checkpoint 相关表
+    由 langgraph-checkpoint-postgres 自动创建，保存新的 Agent thread 状态、工具轨迹和审批中断
 ```
 
 ## 前端页面
@@ -157,11 +183,10 @@ app/static/styles.css
 
 ```text
 app/agent/
-  兼容旧导入路径的包装目录。
+  当前 Agent 的主实现目录：图、工具和 PostgreSQL checkpoint。
 
-  新代码不要优先改这里，应该去：
-  app/workflows/
-  app/tools/
+app/workflows/
+  Dynamic RAG 和批量上传等独立工作流；agent_router.py 仅保留旧路由学习材料。
 ```
 
 ## 常见问题怎么找文件
@@ -177,8 +202,15 @@ app/agent/
   -> app/services/rag_service.py
   -> app/rag/llm.py
 
-我要看 LangGraph 路由 Agent
-  -> app/workflows/agent_router.py
+我要看企业知识运营 Agent
+  -> app/agent/graph.py
+  -> app/services/agent_service.py
+  -> app/agent/tools.py
+
+我要看 Agent 审批恢复
+  -> app/agent/tools.py 的 interrupt()
+  -> app/services/agent_service.py 的 resume_stream()
+  -> app/agent/checkpoint.py
 
 我要看 Dynamic RAG 图流程
   -> app/workflows/dynamic_rag.py
@@ -188,7 +220,7 @@ app/agent/
   -> app/api/routes.py 的 /api/documents/upload-batch
 
 我要看工具定义
-  -> app/tools/rag_tools.py
+  -> app/agent/tools.py
 
 我要看 Chroma 检索
   -> app/rag/vector_store.py

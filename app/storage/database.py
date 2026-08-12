@@ -15,6 +15,19 @@ PROCESSING_UPLOAD_ITEM_STATUSES = ("queued", "saving", "parsing", "splitting", "
 
 _engine: Engine | None = None
 _engine_url: str | None = None
+SCHEMA_VERSION = 3
+
+_TIMESTAMP_COLUMNS = (
+    ("documents", "created_at", False),
+    ("documents", "updated_at", False),
+    ("messages", "created_at", False),
+    ("upload_batches", "created_at", False),
+    ("upload_batches", "completed_at", True),
+    ("upload_batch_items", "created_at", False),
+    ("upload_batch_items", "updated_at", False),
+    ("document_fingerprints", "created_at", False),
+    ("document_fingerprints", "updated_at", False),
+)
 
 
 def _normalized_database_url() -> str:
@@ -50,6 +63,12 @@ def get_database_engine() -> Engine:
         pool_size=settings.database_pool_size,
         max_overflow=settings.database_max_overflow,
         pool_timeout=settings.database_pool_timeout,
+        pool_recycle=settings.database_pool_recycle,
+        connect_args={
+            "connect_timeout": settings.database_connect_timeout,
+            "application_name": "enterprise-rag-agent",
+            "options": f"-c statement_timeout={settings.database_statement_timeout_ms}",
+        },
     )
     _engine_url = database_url
     return _engine
@@ -78,7 +97,7 @@ def check_database_connection() -> None:
 
 
 def init_db() -> None:
-    """初始化 PostgreSQL 业务表，并兼容已经存在的旧版数据结构。"""
+    """初始化 PostgreSQL 业务表，并执行幂等的版本化 schema 迁移。"""
     table_definitions = [
         """
         CREATE TABLE IF NOT EXISTS documents (
@@ -87,7 +106,8 @@ def init_db() -> None:
             file_type TEXT NOT NULL,
             file_path TEXT NOT NULL,
             chunk_count INTEGER NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL
         )
         """,
         """
@@ -96,7 +116,7 @@ def init_db() -> None:
             thread_id TEXT NOT NULL,
             role TEXT NOT NULL,
             content TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TIMESTAMPTZ NOT NULL
         )
         """,
         """
@@ -107,16 +127,17 @@ def init_db() -> None:
             succeeded INTEGER NOT NULL DEFAULT 0,
             failed INTEGER NOT NULL DEFAULT 0,
             skipped INTEGER NOT NULL DEFAULT 0,
-            graph_path TEXT NOT NULL DEFAULT '[]',
+            graph_path JSONB NOT NULL DEFAULT '[]'::jsonb,
             duration_ms INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL,
-            completed_at TEXT
+            created_at TIMESTAMPTZ NOT NULL,
+            completed_at TIMESTAMPTZ
         )
         """,
         """
         CREATE TABLE IF NOT EXISTS upload_batch_items (
             item_id TEXT PRIMARY KEY,
             batch_id TEXT NOT NULL,
+            item_order INTEGER NOT NULL DEFAULT 0,
             document_id TEXT,
             filename TEXT NOT NULL,
             file_type TEXT NOT NULL,
@@ -129,8 +150,8 @@ def init_db() -> None:
             duration_ms INTEGER NOT NULL DEFAULT 0,
             retry_count INTEGER NOT NULL DEFAULT 0,
             duplicate_of_document_id TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
             FOREIGN KEY (batch_id) REFERENCES upload_batches(batch_id) ON DELETE CASCADE
         )
         """,
@@ -141,8 +162,14 @@ def init_db() -> None:
             status TEXT NOT NULL,
             filename TEXT NOT NULL,
             file_path TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
+            applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )
         """,
     ]
@@ -150,39 +177,232 @@ def init_db() -> None:
     with _connect() as connection:
         for definition in table_definitions:
             connection.execute(text(definition))
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS idx_upload_batch_items_batch_id "
-                "ON upload_batch_items(batch_id)"
-            )
-        )
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS idx_upload_batches_created_at "
-                "ON upload_batches(created_at DESC)"
-            )
-        )
+        _apply_schema_migrations(connection)
     mark_interrupted_uploads()
+
+
+def _column_data_type(connection: Connection, table_name: str, column_name: str) -> str | None:
+    row = connection.execute(
+        text(
+            """
+            SELECT data_type
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = :table_name
+              AND column_name = :column_name
+            """
+        ),
+        {"table_name": table_name, "column_name": column_name},
+    ).scalar_one_or_none()
+    return str(row) if row is not None else None
+
+
+def _convert_timestamp_column(
+    connection: Connection,
+    table_name: str,
+    column_name: str,
+    nullable: bool,
+) -> None:
+    if _column_data_type(connection, table_name, column_name) != "text":
+        return
+
+    if nullable:
+        expression = f"NULLIF({column_name}, '')::timestamptz"
+    else:
+        expression = f"COALESCE(NULLIF({column_name}, '')::timestamptz, now())"
+    connection.execute(
+        text(
+            f"ALTER TABLE {table_name} ALTER COLUMN {column_name} "
+            f"TYPE TIMESTAMPTZ USING {expression}"
+        )
+    )
+
+
+def _add_check_constraint(
+    connection: Connection,
+    table_name: str,
+    constraint_name: str,
+    expression: str,
+) -> None:
+    connection.execute(
+        text(
+            f"""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint WHERE conname = '{constraint_name}'
+                ) THEN
+                    ALTER TABLE {table_name}
+                    ADD CONSTRAINT {constraint_name} CHECK ({expression});
+                END IF;
+            END $$;
+            """
+        )
+    )
+
+
+def _apply_schema_migrations(connection: Connection) -> None:
+    current_version = connection.execute(
+        text("SELECT COALESCE(MAX(version), 0) FROM schema_migrations")
+    ).scalar_one()
+    if int(current_version) >= SCHEMA_VERSION:
+        return
+
+    # Existing v0.4 databases used TEXT timestamps and stored graph_path as JSON text.
+    # Convert them in place so the application can be upgraded without data loss.
+    connection.execute(
+        text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ")
+    )
+    connection.execute(
+        text("ALTER TABLE upload_batch_items ADD COLUMN IF NOT EXISTS item_order INTEGER")
+    )
+    connection.execute(
+        text(
+            """
+            WITH ordered_items AS (
+                SELECT item_id,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY batch_id ORDER BY created_at, item_id
+                       ) - 1 AS item_order
+                FROM upload_batch_items
+            )
+            UPDATE upload_batch_items AS items
+            SET item_order = ordered_items.item_order
+            FROM ordered_items
+            WHERE items.item_id = ordered_items.item_id
+            """
+        )
+    )
+    connection.execute(
+        text("ALTER TABLE upload_batch_items ALTER COLUMN item_order SET DEFAULT 0")
+    )
+    connection.execute(
+        text("ALTER TABLE upload_batch_items ALTER COLUMN item_order SET NOT NULL")
+    )
+    for table_name, column_name, nullable in _TIMESTAMP_COLUMNS:
+        _convert_timestamp_column(connection, table_name, column_name, nullable)
+
+    connection.execute(
+        text(
+            """
+            UPDATE documents
+            SET updated_at = COALESCE(updated_at, created_at)
+            WHERE updated_at IS NULL
+            """
+        )
+    )
+    connection.execute(text("ALTER TABLE documents ALTER COLUMN updated_at SET NOT NULL"))
+
+    if _column_data_type(connection, "upload_batches", "graph_path") == "text":
+        connection.execute(
+            text("ALTER TABLE upload_batches ALTER COLUMN graph_path DROP DEFAULT")
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE upload_batches ALTER COLUMN graph_path TYPE JSONB "
+                "USING COALESCE(NULLIF(graph_path, ''), '[]')::jsonb"
+            )
+        )
+    connection.execute(
+        text("ALTER TABLE upload_batches ALTER COLUMN graph_path SET DEFAULT '[]'::jsonb")
+    )
+
+    # Normalize legacy values before adding constraints.
+    connection.execute(
+        text(
+            "UPDATE upload_batches SET status = 'failed' "
+            "WHERE status NOT IN ('running', 'completed', 'partial_success', 'failed')"
+        )
+    )
+    connection.execute(
+        text(
+            "UPDATE upload_batch_items SET status = 'failed', "
+            "error_stage = COALESCE(error_stage, 'schema_migration'), "
+            "error_message = COALESCE(error_message, 'Unknown legacy upload status.') "
+            "WHERE status NOT IN ('queued', 'saving', 'parsing', 'splitting', 'embedding', "
+            "'indexed', 'duplicate', 'failed')"
+        )
+    )
+    connection.execute(
+        text(
+            "UPDATE document_fingerprints SET status = 'failed' "
+            "WHERE status NOT IN ('processing', 'indexed', 'failed')"
+        )
+    )
+
+    _add_check_constraint(
+        connection,
+        "upload_batches",
+        "ck_upload_batches_status",
+        "status IN ('running', 'completed', 'partial_success', 'failed')",
+    )
+    _add_check_constraint(
+        connection,
+        "upload_batch_items",
+        "ck_upload_batch_items_status",
+        "status IN ('queued', 'saving', 'parsing', 'splitting', 'embedding', 'indexed', 'duplicate', 'failed')",
+    )
+    _add_check_constraint(
+        connection,
+        "document_fingerprints",
+        "ck_document_fingerprints_status",
+        "status IN ('processing', 'indexed', 'failed')",
+    )
+
+    indexes = (
+        "CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_messages_thread_id_id ON messages(thread_id, id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_upload_batch_items_batch_status "
+        "ON upload_batch_items(batch_id, status)",
+        "CREATE INDEX IF NOT EXISTS idx_document_fingerprints_document_id "
+        "ON document_fingerprints(document_id)",
+        "CREATE INDEX IF NOT EXISTS idx_upload_batches_status_created_at "
+        "ON upload_batches(status, created_at DESC)",
+    )
+    for definition in indexes:
+        connection.execute(text(definition))
+
+    connection.execute(
+        text(
+            "INSERT INTO schema_migrations(version) VALUES (:version) "
+            "ON CONFLICT (version) DO NOTHING"
+        ),
+        {"version": SCHEMA_VERSION},
+    )
 
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _duration_ms(created_at: str | None) -> int:
+def _duration_ms(created_at: str | datetime | None) -> int:
     try:
-        started = datetime.fromisoformat(created_at or "")
+        started = (
+            created_at
+            if isinstance(created_at, datetime)
+            else datetime.fromisoformat(created_at or "")
+        )
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
         return max(0, int((datetime.now(timezone.utc) - started).total_seconds() * 1000))
     except (TypeError, ValueError):
         return 0
 
 
 def _row_dict(row: Any) -> dict[str, Any] | None:
-    return dict(row) if row is not None else None
+    if row is None:
+        return None
+    # SQLAlchemy 2.x 的 Row 需要从 _mapping 转成字典；RowMapping 本身也兼容该写法。
+    result = dict(getattr(row, "_mapping", row))
+    for key in ("created_at", "updated_at", "completed_at"):
+        value = result.get(key)
+        if isinstance(value, datetime):
+            result[key] = value.isoformat()
+    return result
 
 
 def _rows_dict(rows: Any) -> list[dict[str, Any]]:
-    return [dict(row) for row in rows]
+    return [_row_dict(row) for row in rows]
 
 
 def save_document(
@@ -193,19 +413,21 @@ def save_document(
     chunk_count: int,
 ) -> None:
     """保存成功入库的文档信息；向量内容存在 Chroma。"""
+    now = utc_now()
     with _connect() as connection:
         connection.execute(
             text(
                 """
                 INSERT INTO documents
-                (document_id, filename, file_type, file_path, chunk_count, created_at)
-                VALUES (:document_id, :filename, :file_type, :file_path, :chunk_count, :created_at)
+                (document_id, filename, file_type, file_path, chunk_count, created_at, updated_at)
+                VALUES (:document_id, :filename, :file_type, :file_path, :chunk_count,
+                        :created_at, :updated_at)
                 ON CONFLICT (document_id) DO UPDATE SET
                     filename = EXCLUDED.filename,
                     file_type = EXCLUDED.file_type,
                     file_path = EXCLUDED.file_path,
                     chunk_count = EXCLUDED.chunk_count,
-                    created_at = EXCLUDED.created_at
+                    updated_at = EXCLUDED.updated_at
                 """
             ),
             {
@@ -214,7 +436,8 @@ def save_document(
                 "file_type": file_type,
                 "file_path": str(file_path),
                 "chunk_count": chunk_count,
-                "created_at": utc_now(),
+                "created_at": now,
+                "updated_at": now,
             },
         )
 
@@ -344,6 +567,46 @@ def create_upload_batch(batch_id: str, total: int) -> None:
         )
 
 
+def create_upload_batch_with_items(
+    batch_id: str,
+    items: list[dict[str, Any]],
+) -> None:
+    """原子创建批次和全部 item，避免进程在预处理阶段留下缺 item 的 running 批次。"""
+    now = utc_now()
+    with _connect() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO upload_batches (batch_id, status, total, created_at)
+                VALUES (:batch_id, 'running', :total, :created_at)
+                """
+            ),
+            {"batch_id": batch_id, "total": len(items), "created_at": now},
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO upload_batch_items
+                (item_id, batch_id, item_order, filename, file_type, status, created_at, updated_at)
+                VALUES (:item_id, :batch_id, :item_order, :filename, :file_type,
+                        'queued', :created_at, :updated_at)
+                """
+            ),
+            [
+                {
+                    "item_id": item["item_id"],
+                    "batch_id": batch_id,
+                    "item_order": int(item.get("item_order", index)),
+                    "filename": item["filename"],
+                    "file_type": item["file_type"],
+                    "created_at": now,
+                    "updated_at": now,
+                }
+                for index, item in enumerate(items)
+            ],
+        )
+
+
 def create_upload_batch_item(
     item_id: str,
     batch_id: str,
@@ -352,17 +615,26 @@ def create_upload_batch_item(
 ) -> None:
     now = utc_now()
     with _connect() as connection:
+        item_order = connection.execute(
+            text(
+                "SELECT COALESCE(MAX(item_order), -1) + 1 "
+                "FROM upload_batch_items WHERE batch_id = :batch_id"
+            ),
+            {"batch_id": batch_id},
+        ).scalar_one()
         connection.execute(
             text(
                 """
                 INSERT INTO upload_batch_items
-                (item_id, batch_id, filename, file_type, status, created_at, updated_at)
-                VALUES (:item_id, :batch_id, :filename, :file_type, 'queued', :created_at, :updated_at)
+                (item_id, batch_id, item_order, filename, file_type, status, created_at, updated_at)
+                VALUES (:item_id, :batch_id, :item_order, :filename, :file_type,
+                        'queued', :created_at, :updated_at)
                 """
             ),
             {
                 "item_id": item_id,
                 "batch_id": batch_id,
+                "item_order": int(item_order),
                 "filename": filename,
                 "file_type": file_type,
                 "created_at": now,
@@ -445,9 +717,8 @@ def refresh_upload_batch(batch_id: str, graph_path: list[str] | None = None) -> 
             status = "completed"
             completed_at = utc_now()
 
-        path_text = batch["graph_path"]
-        if graph_path is not None:
-            path_text = json.dumps(graph_path, ensure_ascii=False)
+        path_value = batch["graph_path"] if graph_path is None else graph_path
+        path_text = json.dumps(path_value or [], ensure_ascii=False)
 
         duration_ms = _duration_ms(batch["created_at"]) if finished else 0
         connection.execute(
@@ -495,14 +766,17 @@ def get_upload_batch(batch_id: str) -> dict[str, Any] | None:
                        created_at, updated_at
                 FROM upload_batch_items
                 WHERE batch_id = :batch_id
-                ORDER BY created_at, item_id
+                ORDER BY item_order, created_at, item_id
                 """
             ),
             {"batch_id": batch_id},
         ).mappings().all()
 
     result = _row_dict(batch)
-    result["graph_path"] = json.loads(result.get("graph_path") or "[]")
+    graph_path = result.get("graph_path")
+    if isinstance(graph_path, str):
+        graph_path = json.loads(graph_path or "[]")
+    result["graph_path"] = graph_path or []
     result["items"] = _rows_dict(items)
     return result
 
@@ -687,6 +961,10 @@ def mark_interrupted_uploads() -> None:
     status_placeholders = ", ".join(f":{key}" for key in status_params)
     batch_ids: list[str] = []
     with _connect() as connection:
+        running_batches = connection.execute(
+            text("SELECT batch_id FROM upload_batches WHERE status = 'running'")
+        ).mappings().all()
+        batch_ids = [row["batch_id"] for row in running_batches]
         rows = connection.execute(
             text(
                 "SELECT DISTINCT batch_id FROM upload_batch_items "
@@ -694,7 +972,7 @@ def mark_interrupted_uploads() -> None:
             ),
             status_params,
         ).mappings().all()
-        batch_ids = [row["batch_id"] for row in rows]
+        batch_ids.extend(row["batch_id"] for row in rows if row["batch_id"] not in batch_ids)
         connection.execute(
             text(
                 "UPDATE upload_batch_items "

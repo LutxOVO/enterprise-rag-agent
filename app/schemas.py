@@ -108,7 +108,46 @@ class AskResponse(BaseModel):
 
 class AgentRequest(BaseModel):
     input: str = Field(..., min_length=1, description="用户输入")
-    thread_id: str = Field("default", description="会话 ID")
+    thread_id: str = Field("default", min_length=1, max_length=128, description="会话 ID")
+    web_search_enabled: bool = Field(
+        False,
+        description="是否允许在知识库证据不足时使用 Tavily 联网搜索",
+    )
+
+
+class AgentRunRequest(BaseModel):
+    input: str = Field(..., min_length=1, max_length=10000, description="用户任务")
+    thread_id: str = Field(..., min_length=1, max_length=128, description="可恢复的 Agent 线程 ID")
+    web_search_enabled: bool = Field(
+        False,
+        description="是否允许在知识库证据不足时使用 Tavily 联网搜索",
+    )
+
+
+class AgentResumeRequest(BaseModel):
+    approval_id: str = Field(..., min_length=1, max_length=128)
+    decision: Literal["approve", "reject"]
+    reason: str | None = Field(None, max_length=1000)
+
+
+class AgentStateResponse(BaseModel):
+    thread_id: str
+    status: str
+    run_id: str | None = None
+    pending_approval: dict[str, Any] | None = None
+    tool_trace: list[dict[str, Any]] = Field(default_factory=list)
+    sources: list[dict[str, Any]] = Field(default_factory=list)
+    tool_call_count: int = 0
+    approval_status: str = "none"
+    last_answer: str = ""
+    last_error: str = ""
+    web_search_enabled: bool = False
+
+
+class AgentThreadDeleteResponse(BaseModel):
+    thread_id: str
+    deleted: bool
+    message: str
 
 
 class AgentResponse(BaseModel):

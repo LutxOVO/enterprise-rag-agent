@@ -1,3 +1,4 @@
+import hashlib
 import io
 import pytest
 from fastapi import HTTPException, UploadFile
@@ -12,6 +13,7 @@ from app.storage.database import (
     get_document,
     get_upload_batch,
     init_db,
+    reserve_document_fingerprint,
     update_upload_batch_item,
 )
 
@@ -72,6 +74,26 @@ async def test_batch_success_and_duplicate(isolated_data):
     assert result.skipped == 1
     assert [item.status for item in result.items] == ["indexed", "duplicate"]
     assert get_upload_batch(result.batch_id)["status"] == "completed"
+
+
+@pytest.mark.anyio
+async def test_batch_rejects_duplicate_that_is_processing_elsewhere(isolated_data, tmp_path):
+    content = b"content currently being indexed"
+    source_path = tmp_path / "external.md"
+    source_path.write_bytes(content)
+    reserve_document_fingerprint(
+        hashlib.sha256(content).hexdigest(),
+        "external-processing-doc",
+        "external.md",
+        source_path,
+    )
+
+    result = await run_batch_upload([upload("same-content.md", content)])
+
+    assert result.status == "failed"
+    assert result.items[0].status == "failed"
+    assert result.items[0].error_stage == "deduplication"
+    assert "currently being processed" in (result.items[0].error or "")
 
 
 @pytest.mark.anyio
@@ -172,3 +194,15 @@ def test_interrupted_items_become_retryable_failures(isolated_data):
     assert batch["status"] == "failed"
     assert batch["items"][0]["status"] == "failed"
     assert batch["items"][0]["error_stage"] == "interrupted"
+
+
+def test_running_batch_with_terminal_items_is_reconciled_on_startup(isolated_data):
+    create_upload_batch("batch-awaiting-summary", 1)
+    create_upload_batch_item("item-awaiting-summary", "batch-awaiting-summary", "done.md", "md")
+    update_upload_batch_item("item-awaiting-summary", status="indexed", chunk_count=1)
+
+    init_db()
+
+    batch = get_upload_batch("batch-awaiting-summary")
+    assert batch["status"] == "completed"
+    assert batch["succeeded"] == 1

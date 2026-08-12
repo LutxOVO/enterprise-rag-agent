@@ -14,5 +14,6 @@ venv/
 data/
 logs/
 eval_outputs/
+backups/
 scripts/data/
 tmp/

@@ -10,8 +10,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, HTMLResponse
 
+from app.agent.checkpoint import agent_checkpoint_runtime
 from app.api.routes import router
 from app.core.config import settings
+from app.services.agent_service import agent_service
 from app.storage.database import check_database_connection, init_db
 
 
@@ -21,11 +23,17 @@ logger = logging.getLogger("rag.request")
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """启动时检查 PostgreSQL、创建数据目录和业务表。"""
+    """启动业务数据库和 Agent checkpoint；模型密钥缺失不会阻塞旧 API 启动。"""
     settings.ensure_dirs()
     check_database_connection()
     init_db()
-    yield
+    await agent_checkpoint_runtime.start()
+    agent_service.configure(agent_checkpoint_runtime.checkpointer)
+    try:
+        yield
+    finally:
+        agent_service.stop()
+        await agent_checkpoint_runtime.stop()
 
 
 app = FastAPI(
@@ -63,6 +71,10 @@ async def request_logging_middleware(request, call_next):
         raise
 
     response.headers["X-Request-ID"] = request_id
+    # 工作台的 HTML、JS、CSS 会频繁更新；开发/单机演示时禁止浏览器复用旧静态资源。
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
     event = "request_completed" if response.status_code < 400 else "request_error_response"
     log_method = logger.info if response.status_code < 400 else logger.warning
     log_method(

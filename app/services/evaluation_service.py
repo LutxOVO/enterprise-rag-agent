@@ -10,6 +10,7 @@ from typing import Any
 from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
+from app.core.deepseek import build_deepseek_chat_model
 from app.rag.embeddings import get_embeddings
 from app.rag.llm import generate_answer
 from app.workflows.dynamic_rag import generate_hyde_answer, rewrite_query_for_retrieval
@@ -393,10 +394,7 @@ def build_ragas_metrics():
     if not settings.resolved_deepseek_api_key:
         raise RuntimeError("Please set DEEPSEEK_API_KEY in .env before running RAGAS evaluation.")
 
-    deepseek_llm = ChatOpenAI(
-        model=settings.deepseek_chat_model,
-        api_key=settings.resolved_deepseek_api_key,
-        base_url=settings.deepseek_base_url,
+    deepseek_llm = build_deepseek_chat_model(
         temperature=0,
         timeout=60,
         max_retries=0,

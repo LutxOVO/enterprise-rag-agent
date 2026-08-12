@@ -2,6 +2,8 @@
 
 这份文档用于记录本项目从“关键词规则路由 Agent”升级到“LLM 决策路由 + 显式条件边 LangGraph 工作流”的过程，方便后续复盘、继续迭代和面试讲解。
 
+> 历史说明：当前默认 Agent 已进一步迁移到 `app/agent/graph.py`，使用 `MessagesState -> ToolNode -> 模型` 有界循环、PostgreSQL checkpoint 和 `interrupt()` 审批恢复。本文件中的 `app/workflows/agent_router.py` 仍保留作早期路由学习材料，不再是生产演示入口。
+
 ## 升级背景
 
 原来的 Agent 图比较简单：

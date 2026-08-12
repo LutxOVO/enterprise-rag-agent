@@ -3,321 +3,399 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>企业知识库 RAG Agent 控制台</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <meta name="theme-color" content="#0f766e" />
+    <title>企业知识运营 Agent</title>
+    <link rel="stylesheet" href="/static/styles.css?v=knowledge-agent-workbench-20260812-10" />
   </head>
-  <body>
+  <body data-app-build="knowledge-agent-workbench-20260812-10">
     <div class="app-shell">
-      <header class="topbar">
+      <aside class="sidebar" aria-label="主导航">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">R</div>
-          <div>
-            <h1>企业知识库 RAG Agent</h1>
-            <p>文档上传、知识库问答、检索调试与 RAGAS 评估</p>
+          <div class="brand-copy">
+            <h1>企业知识运营 Agent</h1>
+            <p>知识、检索与操作协同</p>
           </div>
         </div>
-        <div class="status-grid" id="statusGrid">
-          <div class="status-item">
-            <span>状态</span>
-            <strong id="healthText">检查中</strong>
-          </div>
-          <div class="status-item">
-            <span>文档</span>
-            <strong id="documentCount">-</strong>
-          </div>
-          <div class="status-item">
-            <span>切片</span>
-            <strong id="chunkCount">-</strong>
-          </div>
-          <div class="status-item">
-            <span>Embedding</span>
-            <strong id="embeddingProvider">-</strong>
-          </div>
-        </div>
-      </header>
 
-      <nav class="tabs" aria-label="功能导航">
-        <button class="tab-button active" data-tab="documents" type="button">
-          <span class="tab-icon">文</span> 文档
-        </button>
-        <button class="tab-button" data-tab="qa" type="button">
-          <span class="tab-icon">问</span> 问答
-        </button>
-        <button class="tab-button" data-tab="chunks" type="button">
-          <span class="tab-icon">检</span> 检索调试
-        </button>
-        <button class="tab-button" data-tab="ragas" type="button">
-          <span class="tab-icon">评</span> RAGAS 评估
-        </button>
-        <a class="docs-link" href="/docs" target="_blank" rel="noreferrer">Swagger 文档</a>
-      </nav>
+        <nav class="primary-nav" aria-label="工作区">
+          <p class="nav-label">工作区</p>
+          <button class="tab-button nav-item active" data-tab="agent" type="button" aria-current="page">
+            <span class="nav-icon" aria-hidden="true"><svg class="icon"><use href="/static/icons.svg#bot"></use></svg></span>
+            <span>Agent 工作台</span>
+          </button>
+          <button class="tab-button nav-item" data-tab="documents" type="button">
+            <span class="nav-icon" aria-hidden="true"><svg class="icon"><use href="/static/icons.svg#file-text"></use></svg></span>
+            <span>文档管理</span>
+          </button>
+          <button class="tab-button nav-item" data-tab="qa" type="button">
+            <span class="nav-icon" aria-hidden="true"><svg class="icon"><use href="/static/icons.svg#circle-help"></use></svg></span>
+            <span>RAG 实验</span>
+          </button>
+          <button class="tab-button nav-item" data-tab="chunks" type="button">
+            <span class="nav-icon" aria-hidden="true"><svg class="icon"><use href="/static/icons.svg#search"></use></svg></span>
+            <span>检索调试</span>
+          </button>
+          <button class="tab-button nav-item" data-tab="ragas" type="button">
+            <span class="nav-icon" aria-hidden="true"><svg class="icon"><use href="/static/icons.svg#chart-no-axes-combined"></use></svg></span>
+            <span>RAGAS 评估</span>
+          </button>
+        </nav>
 
-      <div class="notice" id="notice" hidden></div>
-
-      <main>
-        <section class="tab-panel active" id="documentsPanel">
-          <div class="section-header">
-            <div>
-              <h2>文档管理</h2>
-              <p>上传 txt、md、pdf 或 MinerU 支持的文档，后端会自动切分并写入 Chroma。</p>
-            </div>
-            <button class="button subtle" id="refreshDocumentsBtn" type="button">
-              <span class="button-icon">刷</span> 刷新
+        <section class="session-panel" aria-label="最近会话">
+          <div class="session-panel-heading">
+            <span class="nav-label">最近会话</span>
+            <button class="icon-button compact-icon-button" id="newSessionSideBtn" type="button" title="新建会话" aria-label="新建会话">
+              <svg class="icon"><use href="/static/icons.svg#plus"></use></svg>
             </button>
           </div>
+          <div class="session-history-list" id="sessionHistoryList">
+            <span class="session-empty">暂无历史会话</span>
+          </div>
+        </section>
 
-          <div class="two-column">
-            <form class="panel" id="uploadForm">
-              <h3>上传文档</h3>
-              <label class="field">
-                <span>选择文件</span>
-                <input id="uploadFile" type="file" multiple />
-              </label>
-              <button class="button primary" id="uploadBtn" type="submit">
-                <span class="button-icon">传</span> 上传并向量化
-              </button>
-              <div class="result-box" id="uploadResult">等待上传。</div>
-            </form>
+        <div class="sidebar-footer">
+          <a class="docs-link" href="/docs" target="_blank" rel="noreferrer">
+            <span class="nav-icon" aria-hidden="true"><svg class="icon"><use href="/static/icons.svg#external-link"></use></svg></span>
+            <span>API 文档</span>
+          </a>
+          <div class="sidebar-health" id="sidebarHealth">
+            <span class="health-dot" aria-hidden="true"></span>
+            <span id="sidebarHealthText">检查服务状态</span>
+          </div>
+        </div>
+      </aside>
 
-            <div class="panel danger-zone">
-              <h3>清理知识库</h3>
-              <p>清空 Chroma、PostgreSQL 文档元数据和对话历史。演示前可用它清理重复文档。</p>
-              <label class="check-row">
-                <input id="deleteFiles" type="checkbox" checked />
-                <span>同时删除上传文件和 MinerU 输出</span>
-              </label>
-              <button class="button danger" id="clearVectorBtn" type="button">
-                <span class="button-icon">清</span> 清空向量库
-              </button>
+      <div class="app-content">
+        <header class="topbar">
+          <div class="mobile-brand">
+            <div class="brand-mark" aria-hidden="true">R</div>
+            <strong>企业知识运营 Agent</strong>
+          </div>
+          <div class="status-strip" id="statusGrid" aria-label="系统状态">
+            <span class="status-pill status-pill-health">
+              <span class="status-dot" id="statusDot" aria-hidden="true"></span>
+              <span id="healthText">检查中</span>
+            </span>
+            <span class="status-pill"><span>文档</span><strong id="documentCount">-</strong></span>
+            <span class="status-pill"><span>切片</span><strong id="chunkCount">-</strong></span>
+            <details class="model-status">
+              <summary>模型</summary>
+              <span id="embeddingProvider">-</span>
+            </details>
+          </div>
+          <button class="icon-button mobile-context-button" id="openContextBtn" type="button" title="打开上下文面板" aria-label="打开上下文面板">
+            <svg class="icon"><use href="/static/icons.svg#panel-right-open"></use></svg>
+          </button>
+        </header>
+
+        <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
+
+        <main class="main-content">
+          <section class="tab-panel active" id="agentPanel">
+            <div class="view-header">
+              <div>
+                <p class="eyebrow">知识运营</p>
+                <h2>Agent 工作台</h2>
+                <p class="view-description">让 Agent 检索知识、查看系统状态，并在需要时请求人工批准后执行操作。</p>
+              </div>
+              <div class="view-actions">
+                <span class="thread-label" id="threadLabel">当前会话</span>
+                <button class="button subtle" id="refreshAgentStateBtn" type="button">
+                  <span class="button-symbol" aria-hidden="true"><svg class="icon"><use href="/static/icons.svg#refresh-cw"></use></svg></span> 恢复状态
+                </button>
+                <button class="button primary" id="newThreadBtn" type="button">
+                  <span class="button-symbol" aria-hidden="true"><svg class="icon"><use href="/static/icons.svg#plus"></use></svg></span> 新建会话
+                </button>
+              </div>
+            </div>
+
+            <div class="agent-workspace" id="agentWorkspace">
+              <section class="conversation-column" aria-label="Agent 对话">
+                <div class="conversation-header">
+                  <div>
+                    <h3>对话</h3>
+                    <p id="agentStatus">准备就绪，可以开始提问。</p>
+                  </div>
+                  <button class="icon-button" id="clearAgentBtn" type="button" title="删除当前会话" aria-label="删除当前会话">
+                    <svg class="icon"><use href="/static/icons.svg#trash-2"></use></svg>
+                  </button>
+                </div>
+
+                <div class="conversation-stream" id="agentConversation" aria-live="polite">
+                  <div class="welcome-state" id="agentWelcome">
+                    <div class="welcome-mark" aria-hidden="true"><svg class="icon icon-lg"><use href="/static/icons.svg#bot"></use></svg></div>
+                    <h3>今天要处理什么知识任务？</h3>
+                    <p>你可以提问、比较文档、查看失败批次，或让 Agent 在审批后重试和重建索引。</p>
+                    <div class="suggestion-list">
+                      <button class="suggestion-chip" type="button" data-suggestion="比较知识库中两份文档关于 Agent 工具调用的说明。">比较两份文档</button>
+                      <button class="suggestion-chip" type="button" data-suggestion="分析最近一次上传失败的批次，并告诉我失败原因。">分析失败批次</button>
+                      <button class="suggestion-chip" type="button" data-suggestion="知识库中有哪些文档？">查看知识库</button>
+                    </div>
+                  </div>
+                  <div class="conversation-message-list" id="agentMessageList"></div>
+                </div>
+
+                <form class="composer" id="agentForm">
+                  <input id="agentThreadId" type="hidden" value="" />
+                  <label class="sr-only" for="agentInput">输入 Agent 任务</label>
+                  <textarea id="agentInput" rows="1" maxlength="10000" placeholder="输入任务，例如：比较知识库中两份文档关于 Agent 工具调用的说明。"></textarea>
+                  <div class="composer-footer">
+                    <label class="web-search-toggle" for="webSearchToggle" title="知识库证据不足时，允许 Agent 使用 Tavily 搜索公开网页">
+                      <input id="webSearchToggle" type="checkbox" />
+                      <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
+                      <span class="toggle-copy"><strong>联网搜索</strong><small id="webSearchModeText">关闭：仅使用知识库</small></span>
+                    </label>
+                    <span class="composer-hint">Agent 会引用来源；写操作需要审批。</span>
+                    <button class="button primary composer-submit" id="agentRunBtn" type="submit">
+                      <span class="button-symbol" aria-hidden="true"><svg class="icon"><use href="/static/icons.svg#send"></use></svg></span> 发送
+                    </button>
+                  </div>
+                </form>
+                <div class="agent-answer-storage" id="agentAnswer" aria-hidden="true"></div>
+              </section>
+
+              <aside class="context-panel is-collapsed" id="contextPanel" aria-label="Agent 上下文">
+                <div class="context-collapsed-rail" aria-label="打开执行详情">
+                  <button class="context-rail-button" type="button" data-context="sourcesContext" title="来源">
+                    <svg class="icon"><use href="/static/icons.svg#book-open"></use></svg><span class="rail-count" id="railSourceCount">0</span><span class="sr-only">来源</span>
+                  </button>
+                  <button class="context-rail-button" type="button" data-context="timelineContext" title="工具轨迹">
+                    <svg class="icon"><use href="/static/icons.svg#activity"></use></svg><span class="rail-count" id="railTraceCount">0</span><span class="sr-only">工具轨迹</span>
+                  </button>
+                  <button class="context-rail-button approval-rail-button" type="button" data-context="approvalContext" title="审批">
+                    <svg class="icon"><use href="/static/icons.svg#shield-check"></use></svg><span class="rail-count" id="railApprovalCount">0</span><span class="sr-only">审批</span>
+                  </button>
+                </div>
+                <div class="context-header">
+                  <div>
+                    <p class="eyebrow">运行上下文</p>
+                    <h3>执行详情</h3>
+                  </div>
+                  <button class="icon-button context-close" id="closeContextBtn" type="button" title="收起上下文面板" aria-label="收起上下文面板">
+                    <svg class="icon"><use href="/static/icons.svg#panel-right-close"></use></svg>
+                  </button>
+                </div>
+                <div class="context-tabs" role="tablist" aria-label="执行详情分类">
+                  <button class="context-tab active" type="button" role="tab" aria-selected="true" aria-controls="sourcesContext" data-context="sourcesContext">来源 <span class="tab-count" id="sourceCount">0</span></button>
+                  <button class="context-tab" type="button" role="tab" aria-selected="false" aria-controls="timelineContext" data-context="timelineContext">轨迹 <span class="tab-count" id="traceCount">0</span></button>
+                  <button class="context-tab approval-tab" type="button" role="tab" aria-selected="false" aria-controls="approvalContext" data-context="approvalContext">审批 <span class="tab-count" id="approvalCount">0</span></button>
+                </div>
+                <div class="context-body">
+                  <section class="context-view active" id="sourcesContext" role="tabpanel">
+                    <div class="context-empty" id="sourcesEmpty">回答产生后，相关文档片段会显示在这里。</div>
+                    <div class="sources" id="agentSources"></div>
+                  </section>
+                  <section class="context-view" id="timelineContext" role="tabpanel" hidden>
+                    <div class="context-empty" id="timelineEmpty">Agent 调用工具后，执行摘要会显示在这里。</div>
+                    <div class="agent-timeline" id="agentTimeline"></div>
+                  </section>
+                  <section class="context-view" id="approvalContext" role="tabpanel" hidden>
+                    <div class="context-empty" id="approvalEmpty">当前没有等待中的审批。</div>
+                    <div class="approval-card" id="agentApprovalCard" hidden>
+                      <div class="approval-heading">
+                         <span class="approval-icon" aria-hidden="true"><svg class="icon"><use href="/static/icons.svg#shield-check"></use></svg></span>
+                        <div>
+                          <h3>需要人工审批</h3>
+                          <p>批准前不会产生写入、删除或重建索引副作用。</p>
+                        </div>
+                      </div>
+                      <div class="approval-grid">
+                        <span>操作</span><strong id="approvalToolName">-</strong>
+                        <span>目标</span><strong id="approvalSummary">-</strong>
+                        <span>参数</span><code id="approvalArgs">-</code>
+                        <span>风险</span><strong id="approvalRisk">-</strong>
+                        <span>审批 ID</span><code id="approvalId">-</code>
+                      </div>
+                      <div class="button-row approval-actions">
+                        <button class="button primary" id="approveAgentBtn" type="button">批准并继续</button>
+                        <button class="button danger-text" id="rejectAgentBtn" type="button">拒绝</button>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </aside>
+            </div>
+            <div class="context-scrim" id="contextScrim" hidden></div>
+          </section>
+
+          <section class="tab-panel" id="documentsPanel">
+            <div class="view-header">
+              <div>
+                <p class="eyebrow">知识库</p>
+                <h2>文档管理</h2>
+                <p class="view-description">上传文档后自动解析、切分、向量化并写入 Chroma。重复内容会被跳过。</p>
+              </div>
+              <button class="button subtle" id="refreshDocumentsBtn" type="button"><span class="button-symbol" aria-hidden="true"><svg class="icon"><use href="/static/icons.svg#refresh-cw"></use></svg></span> 刷新</button>
+            </div>
+
+            <div class="document-view-tabs" role="tablist" aria-label="文档管理视图">
+              <button class="document-view-tab active" type="button" role="tab" aria-selected="true" data-document-view="documents">文档列表</button>
+              <button class="document-view-tab" type="button" role="tab" aria-selected="false" data-document-view="batches">上传批次</button>
+            </div>
+
+            <div class="document-overview">
+              <form class="upload-panel" id="uploadForm" data-document-section="documents">
+                <div class="panel-heading">
+                  <div>
+                    <p class="eyebrow">入库</p>
+                    <h3>上传文档</h3>
+                  </div>
+                  <span class="quiet-label">支持批量上传</span>
+                </div>
+                <label class="upload-dropzone" for="uploadFile">
+                  <span class="upload-icon" aria-hidden="true"><svg class="icon icon-lg"><use href="/static/icons.svg#upload"></use></svg></span>
+                  <strong>拖拽文件到这里，或点击选择</strong>
+                  <span>支持 Markdown、TXT、PDF、DOCX、PPTX 等格式</span>
+                  <input id="uploadFile" type="file" multiple accept=".bmp,.doc,.docx,.gif,.html,.jp2,.jpeg,.jpg,.md,.pdf,.png,.ppt,.pptx,.txt,.webp" />
+                </label>
+                <div class="upload-queue" id="uploadQueue" aria-live="polite">
+                  <span class="context-empty">尚未选择文件。</span>
+                </div>
+                <div class="upload-actions">
+                  <span class="upload-limit">单批最多 10 个文件</span>
+                  <button class="button primary" id="uploadBtn" type="submit"><span class="button-symbol" aria-hidden="true"><svg class="icon"><use href="/static/icons.svg#upload"></use></svg></span> 上传并入库</button>
+                </div>
+                <div class="result-box" id="uploadResult">上传结果会显示在这里。</div>
+              </form>
+
+              <section class="panel batch-summary-panel" data-document-section="batches">
+                <div class="panel-heading">
+                  <div>
+                    <p class="eyebrow">运行记录</p>
+                    <h3>最近批次</h3>
+                  </div>
+                  <button class="icon-button" id="refreshBatchHistoryBtn" type="button" title="刷新批次" aria-label="刷新批次"><svg class="icon"><use href="/static/icons.svg#refresh-cw"></use></svg></button>
+                </div>
+                <div class="batch-list" id="batchHistoryList"></div>
+                <div class="table-wrap legacy-batch-table" hidden>
+                  <table><tbody id="batchHistoryTable"></tbody></table>
+                </div>
+              </section>
+            </div>
+
+            <section class="panel batch-detail-panel" data-document-section="batches">
+              <div class="section-header compact-header">
+                <div><p class="eyebrow">批次详情</p><h3>文件处理结果</h3><p>查看每个文件停在哪个阶段；失败项可以单独重试。</p></div>
+                <span class="batch-detail-label" id="batchDetailLabel">未选择批次</span>
+              </div>
+              <div class="table-wrap responsive-table-wrap">
+                <table>
+                  <thead><tr><th>文件名</th><th>状态</th><th>chunk</th><th>耗时</th><th>失败阶段</th><th>错误 / Document ID</th><th>操作</th></tr></thead>
+                  <tbody id="batchItemsTable"><tr><td colspan="7" class="empty-state">上传完成后可以查看文件明细。</td></tr></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel document-list-panel" data-document-section="documents">
+              <div class="section-header compact-header">
+                <div><p class="eyebrow">已入库</p><h3>文档列表</h3></div>
+                <span class="quiet-label">可重建索引或删除</span>
+              </div>
+              <div class="table-wrap responsive-table-wrap">
+                <table>
+                  <thead><tr><th>文件名</th><th>类型</th><th>切片数</th><th>创建时间</th><th>Document ID</th><th>操作</th></tr></thead>
+                  <tbody id="documentsTable"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="danger-zone panel" data-document-section="danger">
+              <div>
+                <p class="eyebrow danger-eyebrow">危险操作</p>
+                <h3>清空知识库</h3>
+                <p>删除 Chroma 向量、PostgreSQL 文档元数据和对话历史。此操作不可恢复。</p>
+              </div>
+              <div class="danger-actions">
+                <label class="check-row"><input id="deleteFiles" type="checkbox" checked /><span>同时删除上传文件和 MinerU 输出</span></label>
+                <button class="button danger" id="clearVectorBtn" type="button"><span class="button-symbol" aria-hidden="true"><svg class="icon"><use href="/static/icons.svg#trash-2"></use></svg></span> 清空知识库</button>
+              </div>
               <div class="result-box" id="clearResult">未执行清理。</div>
-            </div>
-          </div>
+            </section>
+          </section>
 
-          <div class="panel">
-            <div class="section-header compact-header">
-              <div>
-                <h3>最近批次</h3>
-                <p>批次记录会保存在 PostgreSQL；失败文件可以单独重试。</p>
-              </div>
-              <button class="button subtle" id="refreshBatchHistoryBtn" type="button">
-                <span class="button-icon">历</span> 刷新批次
-              </button>
+          <section class="tab-panel" id="qaPanel">
+            <div class="view-header">
+              <div><p class="eyebrow">实验区</p><h2>RAG 实验</h2><p class="view-description">用同一个问题观察不同检索和生成链路的差异。</p></div>
             </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Batch ID</th>
-                    <th>状态</th>
-                    <th>文件统计</th>
-                    <th>耗时</th>
-                    <th>创建时间</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody id="batchHistoryTable"></tbody>
-              </table>
+            <div class="experiment-layout">
+              <form class="panel experiment-controls" id="askForm">
+                <div class="panel-heading"><div><p class="eyebrow">实验配置</p><h3>运行一次问答</h3></div><span class="quiet-label">辅助调试</span></div>
+                <label class="field"><span>问题</span><textarea id="questionInput" rows="5" placeholder="例如：知识库中的 Agent 如何处理需要审批的操作？"></textarea></label>
+                <div class="experiment-dimension">
+                  <span class="dimension-label">回答方式</span>
+                  <div class="segmented-control answer-mode-control" role="group" aria-label="回答方式">
+                    <button class="segment active" id="qaModeStandard" type="button" data-mode="standard">普通 RAG</button>
+                    <button class="segment" id="qaModeStream" type="button" data-mode="stream">流式 RAG</button>
+                    <button class="segment" id="qaModeAgent" type="button" data-mode="agent">LangGraph Agent</button>
+                  </div>
+                </div>
+                <div class="experiment-dimension">
+                  <span class="dimension-label">检索优化</span>
+                  <div class="segmented-control retrieval-mode-control" role="group" aria-label="检索优化">
+                    <button class="segment active" type="button" data-retrieval-mode="standard">原问题</button>
+                    <button class="segment" type="button" data-retrieval-mode="dynamic">Query Rewrite + HyDE</button>
+                  </div>
+                </div>
+                <div class="experiment-primary-actions">
+                  <button class="button primary" id="askBtn" type="button"><span class="button-symbol" aria-hidden="true"><svg class="icon"><use href="/static/icons.svg#play"></use></svg></span> 运行实验</button>
+                  <span class="experiment-mode-label" id="experimentModeLabel">当前：普通 RAG</span>
+                </div>
+                <details class="advanced-settings">
+                  <summary>高级设置</summary>
+                  <div class="advanced-content">
+                    <input id="threadId" type="hidden" value="default" />
+                    <div class="inline-fields">
+                      <label class="field small-field"><span>top_k</span><input id="qaTopK" type="number" min="1" max="10" value="3" /></label>
+                      <label class="field"><span>检索策略</span><select id="retrievalStrategy"><option value="dense">Dense 向量检索</option><option value="hybrid">Hybrid 混合检索</option></select></label>
+                    </div>
+                    <div class="inline-fields">
+                      <label class="field"><span>文档 ID 过滤（可选）</span><input id="documentIdFilter" type="text" placeholder="只检索一个文档" /></label>
+                      <label class="field"><span>文件名过滤（可选）</span><input id="filenameFilter" type="text" placeholder="例如 handbook.md" /></label>
+                    </div>
+                    <div class="legacy-actions"><button class="button" id="streamBtn" type="button">流式 RAG</button><button class="button" id="langGraphBtn" type="button">LangGraph Agent</button><button class="button" id="dynamicBtn" type="button">Dynamic RAG</button></div>
+                  </div>
+                </details>
+              </form>
+              <section class="panel experiment-result">
+                <div class="answer-toolbar"><div><p class="eyebrow">输出</p><h3>回答与来源</h3></div><button class="button subtle" id="clearAnswerBtn" type="button"><span class="button-symbol" aria-hidden="true"><svg class="icon"><use href="/static/icons.svg#trash-2"></use></svg></span> 清空</button></div>
+                <div class="answer-text markdown-output" id="answerText">还没有回答。</div>
+                <div class="sources" id="sourcesBox"></div>
+              </section>
             </div>
-          </div>
+          </section>
 
-          <div class="panel">
-            <div class="section-header compact-header">
-              <div>
-                <h3>批次文件明细</h3>
-                <p>上传完成后查看每个文件停在哪个阶段，以及失败原因。</p>
-              </div>
-            </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>文件名</th>
-                    <th>状态</th>
-                    <th>chunk</th>
-                    <th>耗时</th>
-                    <th>失败阶段</th>
-                    <th>错误 / Document ID</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody id="batchItemsTable">
-                  <tr><td colspan="7" class="empty-state">尚未选择批次。</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <section class="tab-panel" id="chunksPanel">
+            <div class="view-header"><div><p class="eyebrow">调试</p><h2>检索调试</h2><p class="view-description">查看 Chroma 中保存的 chunk、来源和向量维度。</p></div><div class="inline-controls"><label class="mini-field"><span>limit</span><input id="chunkLimit" type="number" min="1" max="100" value="20" /></label><label class="mini-field"><span>offset</span><input id="chunkOffset" type="number" min="0" value="0" /></label><button class="button primary" id="loadChunksBtn" type="button">加载</button></div></div>
+            <section class="panel"><div class="result-summary" id="chunksSummary">尚未加载。</div><div class="chunk-list" id="chunkList"></div></section>
+          </section>
 
-          <div class="panel">
-            <h3>已上传文档</h3>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>文件名</th>
-                    <th>类型</th>
-                    <th>切片数</th>
-                    <th>创建时间</th>
-                    <th>Document ID</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody id="documentsTable"></tbody>
-              </table>
+          <section class="tab-panel" id="ragasPanel">
+            <div class="view-header"><div><p class="eyebrow">评估</p><h2>RAGAS 评估</h2><p class="view-description">先生成样本，再使用 DeepSeek Judge 评估检索和回答质量。</p></div></div>
+            <div class="experiment-layout">
+              <form class="panel" id="ragasForm">
+                <div class="panel-heading"><div><p class="eyebrow">实验配置</p><h3>运行评估</h3></div><span class="quiet-label">可能消耗 token</span></div>
+                <label class="field"><span>数据集</span><input id="datasetPath" type="text" value="eval_data/ai_agents_in_depth_eval_dataset.json" /></label>
+                <div class="inline-fields"><label class="field"><span>检索模式</span><select id="retrievalMode"><option value="baseline">Baseline：原问题检索</option><option value="hyde_rewrite">HyDE + Query Rewrite</option></select></label><label class="field"><span>检索策略</span><select id="ragasRetrievalStrategy"><option value="dense">Dense</option><option value="hybrid">Hybrid</option></select></label></div>
+                <details class="advanced-settings"><summary>输出与样本设置</summary><div class="advanced-content"><label class="field"><span>样本输出路径</span><input id="samplesOutputPath" type="text" value="eval_outputs/ragas_samples_baseline.json" /></label><label class="field"><span>结果输出路径</span><input id="resultOutputPath" type="text" value="eval_outputs/ragas_result_baseline.json" /></label><div class="inline-fields"><label class="field small-field"><span>top_k</span><input id="ragasTopK" type="number" min="1" max="10" value="3" /></label><label class="field small-field"><span>样本数</span><input id="maxSamples" type="number" min="1" value="1" /></label></div><label class="check-row"><input id="forceRebuild" type="checkbox" /><span>重新生成回答和检索上下文</span></label></div></details>
+                <div class="button-row"><button class="button primary" id="buildSamplesBtn" type="button">生成样本</button><button class="button accent" id="runRagasBtn" type="button">运行评估</button></div>
+              </form>
+              <section class="panel"><div class="panel-heading"><div><p class="eyebrow">结果</p><h3>评估结果</h3></div></div><div class="result-box" id="ragasResult">尚未运行。</div><div class="metrics-grid" id="metricsGrid"></div></section>
             </div>
-          </div>
-        </section>
-
-        <section class="tab-panel" id="qaPanel">
-          <div class="section-header">
-            <div>
-              <h2>知识库问答</h2>
-              <p>对比普通 RAG(2-Step)、流式 RAG(2-Step) 和 Dynamic Prompt + Query Rewrite + HyDE。</p>
-            </div>
-          </div>
-
-          <div class="qa-layout">
-            <form class="panel ask-panel" id="askForm">
-              <div class="inline-fields">
-                <label class="field">
-                  <span>thread_id</span>
-                  <input id="threadId" type="text" value="default" />
-                </label>
-                <label class="field small-field">
-                  <span>top_k</span>
-                  <input id="qaTopK" type="number" min="1" max="10" value="3" />
-                </label>
-              </div>
-              <div class="inline-fields">
-                <label class="field">
-                  <span>retrieval_strategy</span>
-                  <select id="retrievalStrategy">
-                    <option value="dense">dense：纯向量检索</option>
-                    <option value="hybrid">hybrid：向量 + BM25 + RRF</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>document_id 过滤（可选）</span>
-                  <input id="documentIdFilter" type="text" placeholder="只检索一个文档" />
-                </label>
-                <label class="field">
-                  <span>filename 过滤（可选）</span>
-                  <input id="filenameFilter" type="text" placeholder="例如 handbook.md" />
-                </label>
-              </div>
-              <label class="field">
-                <span>问题</span>
-                <textarea id="questionInput" rows="7" placeholder="例如：员工报销需要准备哪些材料？"></textarea>
-              </label>
-              <div class="button-row">
-                <button class="button primary" id="askBtn" type="button">普通 RAG(2-Step)</button>
-                <button class="button" id="streamBtn" type="button">流式 RAG(2-Step)</button>
-                <button class="button" id="langGraphBtn" type="button">LangGraph Agent</button>
-                <button class="button accent" id="dynamicBtn" type="button">Dynamic RAG(Agentic)</button>
-              </div>
-            </form>
-
-            <div class="panel answer-panel">
-              <div class="answer-toolbar">
-                <h3>回答</h3>
-                <button class="button subtle" id="clearAnswerBtn" type="button">清空</button>
-              </div>
-              <div class="answer-text" id="answerText">还没有回答。</div>
-              <div class="sources" id="sourcesBox"></div>
-            </div>
-          </div>
-        </section>
-
-        <section class="tab-panel" id="chunksPanel">
-          <div class="section-header">
-            <div>
-              <h2>检索调试</h2>
-              <p>查看 Chroma 中保存的 chunk，检查切分内容、来源和向量维度。</p>
-            </div>
-            <div class="inline-controls">
-              <label class="mini-field">
-                <span>limit</span>
-                <input id="chunkLimit" type="number" min="1" max="100" value="20" />
-              </label>
-              <label class="mini-field">
-                <span>offset</span>
-                <input id="chunkOffset" type="number" min="0" value="0" />
-              </label>
-              <button class="button primary" id="loadChunksBtn" type="button">加载</button>
-            </div>
-          </div>
-
-          <div class="panel">
-            <div class="result-summary" id="chunksSummary">尚未加载。</div>
-            <div class="chunk-list" id="chunkList"></div>
-          </div>
-        </section>
-
-        <section class="tab-panel" id="ragasPanel">
-          <div class="section-header">
-            <div>
-              <h2>RAGAS 评估</h2>
-              <p>先生成样本，再使用 DeepSeek 作为 Judge Model 运行评估。完整评估会比较慢并消耗 token。</p>
-            </div>
-          </div>
-
-          <div class="qa-layout">
-            <form class="panel" id="ragasForm">
-              <label class="field">
-                <span>dataset_path</span>
-                <input id="datasetPath" type="text" value="eval_data/ai_agents_in_depth_eval_dataset.json" />
-              </label>
-                <label class="field">
-                  <span>retrieval_mode</span>
-                <select id="retrievalMode">
-                  <option value="baseline">baseline：原问题直接检索</option>
-                  <option value="hyde_rewrite">hyde_rewrite：Query Rewrite + HyDE</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>retrieval_strategy</span>
-                  <select id="ragasRetrievalStrategy">
-                    <option value="dense">dense：纯向量检索</option>
-                    <option value="hybrid">hybrid：向量 + BM25 + RRF</option>
-                  </select>
-                </label>
-              <label class="field">
-                <span>samples_output_path</span>
-                <input id="samplesOutputPath" type="text" value="eval_outputs/ragas_samples_baseline.json" />
-              </label>
-              <label class="field">
-                <span>result_output_path</span>
-                <input id="resultOutputPath" type="text" value="eval_outputs/ragas_result_baseline.json" />
-              </label>
-              <div class="inline-fields">
-                <label class="field small-field">
-                  <span>top_k</span>
-                  <input id="ragasTopK" type="number" min="1" max="10" value="3" />
-                </label>
-                <label class="field small-field">
-                  <span>max_samples</span>
-                  <input id="maxSamples" type="number" min="1" value="1" />
-                </label>
-              </div>
-              <label class="check-row">
-                <input id="forceRebuild" type="checkbox" />
-                <span>force_rebuild：重新生成回答和检索上下文</span>
-              </label>
-              <div class="button-row">
-                <button class="button primary" id="buildSamplesBtn" type="button">生成样本</button>
-                <button class="button accent" id="runRagasBtn" type="button">运行评估</button>
-              </div>
-            </form>
-
-            <div class="panel">
-              <h3>评估结果</h3>
-              <div class="result-box" id="ragasResult">尚未运行。</div>
-              <div class="metrics-grid" id="metricsGrid"></div>
-            </div>
-          </div>
-        </section>
-      </main>
+          </section>
+        </main>
+      </div>
     </div>
 
-    <script src="/static/app.js?v=rag-debug-path-only-20260624"></script>
+    <div class="mobile-nav" aria-label="移动端主导航">
+      <button class="tab-button active" data-tab="agent" type="button"><svg class="icon"><use href="/static/icons.svg#bot"></use></svg><span>Agent</span></button>
+      <button class="tab-button" data-tab="documents" type="button"><svg class="icon"><use href="/static/icons.svg#file-text"></use></svg><span>文档</span></button>
+      <button class="tab-button" data-tab="qa" type="button"><svg class="icon"><use href="/static/icons.svg#search"></use></svg><span>RAG</span></button>
+          <button class="tab-button" data-tab="more" type="button"><svg class="icon"><use href="/static/icons.svg#more-horizontal"></use></svg><span>更多</span></button>
+    </div>
+
+    <script src="/static/vendor/marked.umd.js"></script>
+    <script src="/static/vendor/purify.min.js"></script>
+    <script src="/static/app.js?v=knowledge-agent-workbench-20260812-10"></script>
   </body>
 </html>

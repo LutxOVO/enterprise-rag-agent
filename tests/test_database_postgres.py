@@ -1,9 +1,12 @@
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from sqlalchemy import text
+
 from app.storage.database import (
     create_upload_batch,
     create_upload_batch_item,
+    get_database_engine,
     get_upload_batch,
     reserve_document_fingerprint,
     save_document,
@@ -56,3 +59,48 @@ def test_fingerprint_reservation_is_atomic_under_concurrency(tmp_path):
 
     assert sum(1 for result in results if result["reserved"]) == 1
     assert sum(1 for result in results if not result["reserved"]) == 1
+    loser = next(result for result in results if not result["reserved"])
+    assert loser["status"] == "processing"
+
+
+def test_schema_migration_creates_typed_timestamps_json_and_indexes():
+    with get_database_engine().connect() as connection:
+        columns = connection.execute(
+            text(
+                """
+                SELECT table_name, column_name, data_type
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND ((table_name = 'documents' AND column_name IN ('created_at', 'updated_at'))
+                    OR (table_name = 'upload_batches' AND column_name = 'graph_path')
+                    OR (table_name = 'upload_batch_items' AND column_name = 'item_order'))
+                ORDER BY table_name, column_name
+                """
+            )
+        ).all()
+        indexes = {
+            row[0]
+            for row in connection.execute(
+                text(
+                    "SELECT indexname FROM pg_indexes "
+                    "WHERE schemaname = 'public'"
+                )
+            ).all()
+        }
+        version = connection.execute(
+            text("SELECT MAX(version) FROM schema_migrations")
+        ).scalar_one()
+
+    assert {(row[0], row[1], row[2]) for row in columns} == {
+        ("documents", "created_at", "timestamp with time zone"),
+        ("documents", "updated_at", "timestamp with time zone"),
+        ("upload_batch_items", "item_order", "integer"),
+        ("upload_batches", "graph_path", "jsonb"),
+    }
+    assert version == 3
+    assert {
+        "idx_documents_created_at",
+        "idx_messages_thread_id_id",
+        "idx_upload_batch_items_batch_status",
+        "idx_document_fingerprints_document_id",
+    }.issubset(indexes)

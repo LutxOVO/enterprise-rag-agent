@@ -1,10 +1,13 @@
 from pathlib import Path
 import os
+import re
 import shutil
 import sys
 
 from fastapi.testclient import TestClient
 from langchain_core.embeddings import Embeddings
+from langchain_core.messages import AIMessage, ToolMessage
+from langgraph.checkpoint.memory import InMemorySaver
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
@@ -13,14 +16,27 @@ TEST_DATA_DIR = ROOT_DIR / "scripts" / "data"
 if TEST_DATA_DIR.exists():
     shutil.rmtree(TEST_DATA_DIR)
 
+
+def _test_database_url() -> str:
+    """读取本地配置并切换到独立的 smoke_test 数据库。"""
+    database_url = os.getenv("SMOKE_DATABASE_URL") or os.getenv("DATABASE_URL")
+    if not database_url:
+        env_path = ROOT_DIR / ".env"
+        if env_path.is_file():
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                if line.startswith("DATABASE_URL="):
+                    database_url = line.split("=", 1)[1].strip().strip('"')
+                    break
+    database_url = database_url or (
+        "postgresql+psycopg://rag:local-only-change-me@localhost:5432/rag"
+    )
+    return re.sub(r"/rag(?=\?|$)", "/rag_test", database_url)
+
 os.environ["DATA_DIR"] = str(TEST_DATA_DIR)
 os.environ["PDF_PARSER"] = "pypdf"
 os.environ["QWEN_API_KEY"] = ""
 # 冒烟测试固定使用独立 PostgreSQL 数据库，避免清理演示库中的真实数据。
-os.environ["DATABASE_URL"] = os.getenv(
-    "SMOKE_DATABASE_URL",
-    "postgresql+psycopg://rag:rag_learning_password@localhost:5432/rag_test",
-)
+os.environ["DATABASE_URL"] = _test_database_url()
 
 from app.main import app
 from app.core.config import settings
@@ -58,11 +74,41 @@ settings.qwen_api_key = ""
 settings.dashscope_api_key = ""
 settings.openai_api_key = ""
 settings.qwen_embedding_dimensions = 4
+settings.deepseek_api_key = ""
+
+
+class FakeAgentModel:
+    """冒烟测试中的 Agent 只调用只读系统状态工具，不访问真实对话模型。"""
+
+    async def ainvoke(self, messages):
+        if any(isinstance(message, ToolMessage) for message in messages):
+            return AIMessage(content="[offline smoke agent answer]")
+        return AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "get_system_status",
+                    "args": {},
+                    "id": "smoke-agent-call",
+                    "type": "tool_call",
+                }
+            ],
+        )
 
 
 def main() -> None:
     """Run a small end-to-end check without polluting the real data directory."""
     with TestClient(app) as client:
+        # lifespan 会按配置创建 Agent；这里替换为内存 checkpoint + 假模型，确保 smoke 不消耗云端 token。
+        from app.agent.tools import get_system_status
+        from app.services.agent_service import agent_service
+
+        agent_service.stop()
+        agent_service.configure(
+            InMemorySaver(),
+            model=FakeAgentModel(),
+            tools=[get_system_status],
+        )
         health = client.get("/api/health")
         health.raise_for_status()
 

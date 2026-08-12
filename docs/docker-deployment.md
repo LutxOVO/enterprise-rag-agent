@@ -21,6 +21,8 @@
 
 PostgreSQL 使用命名卷 `postgres_data` 持久化，Chroma、原始上传文件和 MinerU 输出使用宿主机的 `data/` 目录。删除容器不会删除这两类数据。
 
+Compose 默认只把 PostgreSQL 和 FastAPI 绑定到宿主机 `127.0.0.1`；如需对外提供服务，应在反向代理、认证和 TLS 之后再开放端口。
+
 ## 2. 关键文件
 
 - `Dockerfile`：构建阶段使用 `uv sync --frozen` 按 `uv.lock` 安装依赖；运行阶段直接调用 `/app/.venv/bin/python -m uvicorn`。
@@ -62,14 +64,14 @@ PostgreSQL 默认配置为：
 ```env
 POSTGRES_DB=rag
 POSTGRES_USER=rag
-POSTGRES_PASSWORD=rag_learning_password
+POSTGRES_PASSWORD=替换为本机密码
 POSTGRES_PORT=5432
 ```
 
 Compose 内部会把应用的数据库地址设置为：
 
 ```text
-postgresql+psycopg://rag:rag_learning_password@postgres:5432/rag
+postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
 ```
 
 ### 3.3 检查并启动
@@ -95,9 +97,16 @@ Invoke-RestMethod http://127.0.0.1:8000/api/health
 ```json
 {
   "status": "ok",
-  "app": "Enterprise Knowledge Base RAG Agent"
+  "app": "Enterprise Knowledge Base RAG Agent",
+  "agent": {
+    "checkpointer_ready": true,
+    "model_configured": true,
+    "ready": true
+  }
 }
 ```
+
+如果 `model_configured` 为 `false`，健康检查仍可成功，但 Agent 接口会返回 `503`；上传、普通 RAG 等旧接口可以继续使用各自需要的配置。填写 `.env` 后重启 `rag` 容器。
 
 浏览器地址：
 
@@ -171,7 +180,23 @@ docker compose down
 
 `docker compose down` 不会删除 `postgres_data` 或宿主机的 `data/`。不要使用 `docker compose down -v`，因为 `-v` 会删除 PostgreSQL 命名卷。
 
-## 7. 从旧 SQLite 迁移
+## 7. PostgreSQL 备份
+
+命名卷解决容器重建后的持久化，但不等于备份。可以定期导出业务数据库：
+
+```powershell
+New-Item -ItemType Directory -Force backups | Out-Null
+docker compose exec -T postgres pg_dump -U rag -d rag `
+  > backups\rag_$(Get-Date -Format yyyyMMdd_HHmmss).sql
+```
+
+恢复前先停止应用写入，再执行：
+
+```powershell
+Get-Content backups\rag_20260812_120000.sql | docker compose exec -T postgres psql -U rag -d rag
+```
+
+## 8. 从旧 SQLite 迁移
 
 如果项目以前使用 `data/app.db`，先停止旧应用并备份文件：
 
@@ -219,7 +244,7 @@ docker compose up -d
 
 如果报告某些文件不存在，需要把原始文件放回 `data/uploads/`，否则失败项无法执行重试或重建索引。
 
-## 8. 上传和 RAG 流程
+## 9. 上传和 RAG 流程
 
 Docker 不改变现有 API：
 
@@ -241,7 +266,9 @@ curl.exe -X POST `
 -> PostgreSQL 登记
 ```
 
-## 9. 常见问题
+Agent 的 LangGraph checkpoint 也保存在 PostgreSQL 命名卷中。`data/` 只保存 Chroma、上传文件和 MinerU 输出；因此 `docker compose restart rag` 不会丢失待审批线程。
+
+## 10. 常见问题
 
 ### PostgreSQL 没有健康
 
@@ -276,19 +303,23 @@ Docker Compose 默认不会热重载：
 docker compose up -d --build
 ```
 
-## 10. 测试数据库
+## 11. 测试数据库
 
 测试不能连接演示库 `rag`。本地测试需要一个独立的 `rag_test` 数据库：
 
 ```powershell
 docker compose exec postgres createdb -U rag rag_test
-$env:TEST_DATABASE_URL="postgresql+psycopg://rag:rag_learning_password@localhost:5432/rag_test"
-uv run pytest -q
+$env:TEST_DATABASE_URL="postgresql+psycopg://rag:local-only-change-me@localhost:5432/rag_test"
+.\scripts\test.ps1
 ```
 
 如果数据库已经存在，`createdb` 的报错可以忽略。GitHub Actions 会自动启动独立 PostgreSQL service，并注入 `TEST_DATABASE_URL`。
 
-## 11. 当前方案边界
+上面的连接串中的 `local-only-change-me` 只是 `.env.example` 的本地占位密码；如果 `.env` 使用了其他密码，请替换为实际值。测试脚本会拒绝连接演示库 `rag`。
+
+直接在宿主机运行 FastAPI 时，`.env` 中的 `DATABASE_URL` 应指向 `localhost:5432/rag`；Compose 启动应用时会覆盖为容器内部的 `postgres:5432` 地址。测试脚本必须使用 `rag_test`，不会允许误连演示库。
+
+## 12. 当前方案边界
 
 这是单机部署方案，适合学习、演示和个人项目：
 

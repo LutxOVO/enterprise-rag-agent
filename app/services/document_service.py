@@ -128,15 +128,25 @@ class DocumentService:
     async def ingest_upload(self, file: UploadFile, upload_dir: Path) -> dict:
         """单文件入口，也使用指纹去重和线程隔离。"""
         saved_upload = await self.save_upload_file(file, upload_dir)
-        reservation = reserve_document_fingerprint(
+        reservation = await asyncio.to_thread(
+            reserve_document_fingerprint,
             saved_upload.file_hash,
             saved_upload.document_id,
             saved_upload.filename,
             saved_upload.path,
         )
+        if not reservation["reserved"] and reservation.get("status") == "processing":
+            self.cleanup_saved_upload(saved_upload)
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "The same file content is currently being processed by another task; "
+                    "retry after that task finishes."
+                ),
+            )
         if not reservation["reserved"]:
             self.cleanup_saved_upload(saved_upload)
-            existing = get_document(str(reservation["document_id"])) or {}
+            existing = await asyncio.to_thread(get_document, str(reservation["document_id"])) or {}
             return {
                 "document_id": reservation["document_id"],
                 "filename": existing.get("filename") or reservation.get("filename") or saved_upload.filename,
@@ -147,15 +157,30 @@ class DocumentService:
 
         try:
             result = await asyncio.to_thread(self.ingest_saved_file, saved_upload)
-            set_document_fingerprint_status(saved_upload.file_hash, "indexed", saved_upload.path)
+            await asyncio.to_thread(
+                set_document_fingerprint_status,
+                saved_upload.file_hash,
+                "indexed",
+                saved_upload.path,
+            )
             return {**result, "status": "indexed"}
         except HTTPException:
-            set_document_fingerprint_status(saved_upload.file_hash, "failed", saved_upload.path)
-            self._delete_vectors_safely(saved_upload.document_id)
+            await asyncio.to_thread(
+                set_document_fingerprint_status,
+                saved_upload.file_hash,
+                "failed",
+                saved_upload.path,
+            )
+            await asyncio.to_thread(self._delete_vectors_safely, saved_upload.document_id)
             raise
         except Exception as exc:
-            set_document_fingerprint_status(saved_upload.file_hash, "failed", saved_upload.path)
-            self._delete_vectors_safely(saved_upload.document_id)
+            await asyncio.to_thread(
+                set_document_fingerprint_status,
+                saved_upload.file_hash,
+                "failed",
+                saved_upload.path,
+            )
+            await asyncio.to_thread(self._delete_vectors_safely, saved_upload.document_id)
             raise HTTPException(status_code=500, detail=f"Embedding/vector store failed: {exc}") from exc
 
     def ingest_saved_file(

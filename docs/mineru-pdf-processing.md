@@ -82,7 +82,7 @@ MINERU_MAX_PAGES_PER_REQUEST=200
 启动服务：
 
 ```powershell
-uv run uvicorn app.main:app --reload
+./scripts/run_local.ps1 -Reload
 ```
 
 上传原始 PDF：

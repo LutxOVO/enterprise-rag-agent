@@ -72,9 +72,15 @@ async def upload_worker_node(state: UploadWorkerState) -> dict[str, Any]:
                 saved_upload,
                 notify_stage,
             )
-        set_document_fingerprint_status(saved_upload.file_hash, "indexed", saved_upload.path)
+        await asyncio.to_thread(
+            set_document_fingerprint_status,
+            saved_upload.file_hash,
+            "indexed",
+            saved_upload.path,
+        )
         duration_ms = int((asyncio.get_running_loop().time() - started) * 1000)
-        update_upload_batch_item(
+        await asyncio.to_thread(
+            update_upload_batch_item,
             item_id,
             document_id=saved_upload.document_id,
             status="indexed",
@@ -92,8 +98,14 @@ async def upload_worker_node(state: UploadWorkerState) -> dict[str, Any]:
         duration_ms = int((asyncio.get_running_loop().time() - started) * 1000)
         error_message = _error_text(exc)
         error_stage = stage_holder["stage"]
-        set_document_fingerprint_status(saved_upload.file_hash, "failed", saved_upload.path)
-        update_upload_batch_item(
+        await asyncio.to_thread(
+            set_document_fingerprint_status,
+            saved_upload.file_hash,
+            "failed",
+            saved_upload.path,
+        )
+        await asyncio.to_thread(
+            update_upload_batch_item,
             item_id,
             document_id=saved_upload.document_id,
             status="failed",

@@ -2,11 +2,11 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-rag}
-      POSTGRES_USER: ${POSTGRES_USER:-rag}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rag_learning_password}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:?POSTGRES_PORT must be set in .env}:5432"
     volumes:
       # PostgreSQL 业务数据使用独立命名卷，不和 Chroma/上传文件混在一起。
       - postgres_data:/var/lib/postgresql/data
@@ -15,7 +15,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U ${POSTGRES_USER:-rag} -d ${POSTGRES_DB:-rag}",
+          "pg_isready -U ${POSTGRES_USER:?POSTGRES_USER must be set in .env} -d ${POSTGRES_DB:?POSTGRES_DB must be set in .env}",
         ]
       interval: 5s
       timeout: 5s
@@ -30,12 +30,12 @@ services:
     environment:
       # 容器内使用服务名 postgres；宿主机本地运行时请使用 localhost。
       DATA_DIR: /app/data
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rag}:${POSTGRES_PASSWORD:-rag_learning_password}@postgres:5432/${POSTGRES_DB:-rag}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?POSTGRES_USER must be set in .env}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB must be set in .env}
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "${RAG_PORT:-8000}:8000"
+      - "127.0.0.1:${RAG_PORT:?RAG_PORT must be set in .env}:8000"
     volumes:
       # 宿主机 data 目录保存 Chroma、上传文件和 MinerU 输出。
       - ./data:/app/data

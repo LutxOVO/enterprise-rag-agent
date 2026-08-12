@@ -1,4 +1,5 @@
 import asyncio
+import asyncio
 import time
 from collections.abc import AsyncGenerator
 
@@ -61,12 +62,12 @@ class RagService:
         context_started = time.perf_counter()
         context = self.format_context(results)
         context_ms = int((time.perf_counter() - context_started) * 1000)
-        history_text = self._format_history(thread_id)
+        history_text = await asyncio.to_thread(self._format_history, thread_id)
         answer_started = time.perf_counter()
         answer = await generate_answer(question, context, history_text)
         answer_ms = int((time.perf_counter() - answer_started) * 1000)
 
-        self._save_turn(thread_id, question, answer)
+        await asyncio.to_thread(self._save_turn, thread_id, question, answer)
         return answer, self._to_sources(results), {
             "retrieval_ms": retrieval_ms,
             "context_ms": context_ms,
@@ -92,14 +93,14 @@ class RagService:
             filename,
         )
         context = self.format_context(results)
-        history_text = self._format_history(thread_id)
+        history_text = await asyncio.to_thread(self._format_history, thread_id)
         collected: list[str] = []
 
         async for chunk in stream_answer(question, context, history_text):
             collected.append(chunk)
             yield chunk
 
-        self._save_turn(thread_id, question, "".join(collected))
+        await asyncio.to_thread(self._save_turn, thread_id, question, "".join(collected))
 
     def retrieve(
         self,

@@ -66,6 +66,7 @@ def test_hybrid_retrieval_fuses_dense_and_bm25(monkeypatch):
     assert results[0].document.metadata["document_id"] == "doc-1"
     assert results[0].dense_rank == 2
     assert results[0].bm25_rank == 1
+    assert results[0].dense_distance == 0.2
     assert results[0].score > 0
 
 

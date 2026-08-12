@@ -6,6 +6,7 @@ from langgraph.graph import END, StateGraph
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
+from app.core.deepseek import build_deepseek_chat_model
 from app.rag.vector_store import ChromaVectorStore, SearchResult
 
 
@@ -31,17 +32,68 @@ class ContextEvaluation(BaseModel):
     reason: str = Field(description="简短说明判断依据，必须只引用上下文是否包含证据。")
 
 
+def run_deep_retrieval(
+    query: str,
+    top_k: int = DYNAMIC_RAG_TOP_K,
+    retrieval_strategy: str = "hybrid",
+    document_id: str | None = None,
+    filename: str | None = None,
+) -> dict[str, Any]:
+    """Run the advanced retrieval stages without generating the final answer.
+
+    The Agent owns answer synthesis. Keeping this function retrieval-only prevents
+    the deep RAG tool from becoming a second competing answer workflow.
+    """
+    rewritten_query = rewrite_query_for_retrieval(query)
+    hyde_answer = generate_hyde_answer(query, rewritten_query)
+    vector_store = ChromaVectorStore()
+    results = vector_store.search(
+        hyde_answer or rewritten_query or query,
+        k=max(1, min(top_k, 10)),
+        retrieval_strategy=retrieval_strategy,
+        document_id=document_id,
+        filename=filename,
+    )
+    context = format_context(results)
+
+    if not context.strip():
+        sufficient = False
+        reason = "未检索到知识库上下文，无法基于证据回答。"
+    else:
+        prompt = (
+            "你是 RAG 检索上下文充分性评估器，不是回答者。\n"
+            "只判断知识库上下文是否包含回答用户问题所需的直接证据。\n"
+            "即使你自己知道答案，只要上下文没有证据，也必须判定为 false。\n\n"
+            f"用户问题：{query}\n\n知识库上下文：\n{context}"
+        )
+        model = _build_deepseek_model(temperature=0).with_structured_output(ContextEvaluation)
+        evaluation = model.invoke([SystemMessage(content=prompt), HumanMessage(content=query)])
+        sufficient = evaluation.sufficient
+        reason = evaluation.reason
+
+    return {
+        "mode": "deep",
+        "original_query": query,
+        "rewritten_query": rewritten_query,
+        "hyde_answer": hyde_answer,
+        "retrieval_query": hyde_answer or rewritten_query or query,
+        "retrieval_strategy": retrieval_strategy,
+        "top_k": max(1, min(top_k, 10)),
+        "document_id": document_id,
+        "filename": filename,
+        "retrieved_chunks": serialize_retrieved_chunks(results),
+        "context": context,
+        "context_sufficient": sufficient,
+        "context_evaluation_reason": reason,
+    }
+
+
 def _build_deepseek_model(temperature: float = 0.2) -> ChatOpenAI:
     """Dynamic RAG 的查询改写、HyDE、评估和回答统一使用 DeepSeek。"""
     if not settings.resolved_deepseek_api_key:
         raise RuntimeError("Dynamic RAG graph requires DEEPSEEK_API_KEY in .env.")
 
-    return ChatOpenAI(
-        model=settings.deepseek_chat_model,
-        api_key=settings.resolved_deepseek_api_key,
-        base_url=settings.deepseek_base_url,
-        temperature=temperature,
-    )
+    return build_deepseek_chat_model(temperature=temperature)
 
 
 def rewrite_query_for_retrieval(query: str) -> str:
