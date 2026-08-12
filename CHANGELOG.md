@@ -2,6 +2,15 @@
 
 版本标签应在对应功能完成并通过验证后创建。下面按功能边界记录当前候选版本；RAGAS 的具体提升百分比仍必须以真实运行结果为准。
 
+## v0.5.0 企业知识运营 Agent 工作台
+
+- 使用 `model -> ToolNode -> model` 有界循环，让模型按需选择知识库、系统查询和文档运营工具；
+- RAG 作为 `search_knowledge_base` Tool，普通交流直接回答，明确的企业资料请求由图执行知识证据校验；
+- 增加 Tavily 低可信度联网兜底和工作台开关，关闭时由服务端强制阻断网页调用；
+- 写操作使用 LangGraph `interrupt()` 审批，并通过 PostgreSQL checkpoint 支持重启后恢复；
+- 增加会话切换与删除、来源隔离、LLM 阶段摘要、工具轨迹和 SSE 恢复展示；
+- 默认开启 DeepSeek thinking 信号，但不向前端暴露或持久化原始隐藏思维链。
+
 ## v0.4.0 PostgreSQL 持久化
 
 - 使用 SQLAlchemy 同步连接池和 psycopg，将运行时业务数据库从 SQLite 迁移到 PostgreSQL；

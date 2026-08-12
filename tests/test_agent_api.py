@@ -56,12 +56,19 @@ def test_agent_sse_contract_and_state_endpoint():
         )
         assert response.status_code == 200
         events = parse_events(response.text)
-        assert [event["event"] for event in events] == ["run_started", "answer", "done"]
+        event_names = [event["event"] for event in events]
+        assert event_names[0] == "run_started"
+        assert event_names[-2:] == ["answer", "done"]
+        assert [event["status"] for event in events if event["event"] == "llm_stage"] == [
+            "started",
+            "completed",
+        ]
         assert events[-1]["status"] == "completed"
 
         state = client.get("/api/agent/threads/api-thread/state")
         assert state.status_code == 200
         assert state.json()["last_answer"] == "API 普通回答"
+        assert len(state.json()["llm_trace"]) == 1
 
 
 def test_agent_approval_api_resumes_once(monkeypatch):

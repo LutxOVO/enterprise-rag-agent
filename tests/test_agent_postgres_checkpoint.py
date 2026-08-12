@@ -77,6 +77,9 @@ async def test_postgres_checkpoint_survives_agent_service_recreation():
         state = await service_after_restart.get_state(thread_id)
         assert state["status"] == "awaiting_approval"
         assert state["pending_approval"]["approval_id"] == "checkpoint-approval"
+        assert state["llm_trace"]
+        assert state["llm_trace"][0]["status"] == "completed"
+        assert "reasoning_content" not in str(state["llm_trace"])
         assert executed == []
 
         resumed = [

@@ -16,7 +16,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
-from app.agent.graph import build_agent_graph, model_is_configured
+from app.agent.graph import build_agent_graph, knowledge_evidence_required_for_query, model_is_configured
 from app.agent.tools import WRITE_TOOL_NAMES
 from app.core.config import settings
 from app.workflows.dynamic_rag import DYNAMIC_RAG_TOP_K, build_dynamic_prompt_agent
@@ -294,12 +294,14 @@ class AgentService:
         if pending:
             status = "awaiting_approval"
         trace = _redact_context(values.get("tool_trace", []))
+        llm_trace = _redact_context(values.get("llm_trace", []))
         return {
             "thread_id": thread_id,
             "status": status,
             "run_id": values.get("run_id"),
             "pending_approval": pending,
             "tool_trace": trace,
+            "llm_trace": llm_trace,
             "sources": _json_safe(values.get("sources", [])),
             "tool_call_count": int(values.get("tool_call_count", 0) or 0),
             "approval_status": values.get("approval_status", "none"),
@@ -407,7 +409,13 @@ class AgentService:
         self,
         update: dict[str, Any],
         tool_names: dict[str, str],
+        tool_trace_orders: dict[str, int],
     ) -> list[dict[str, Any]]:
+        if update.get("type") == "custom":
+            custom_data = update.get("data")
+            if isinstance(custom_data, dict) and custom_data.get("event") == "llm_stage":
+                return [{"event": "llm_stage", **_json_safe(custom_data)}]
+            return []
         data = update.get("data", update)
         events: list[dict[str, Any]] = []
         if "__interrupt__" in data:
@@ -421,6 +429,11 @@ class AgentService:
         for node, payload in data.items():
             if not isinstance(payload, dict):
                 continue
+            for call_id, trace_order in (payload.get("pending_tool_trace_orders") or {}).items():
+                try:
+                    tool_trace_orders[str(call_id)] = int(trace_order)
+                except (TypeError, ValueError):
+                    continue
             for message in payload.get("messages", []) or []:
                 calls = _message_tool_calls(message)
                 for call in calls:
@@ -429,11 +442,14 @@ class AgentService:
                         {
                             "event": "tool_call",
                             **call,
+                            "trace_order": tool_trace_orders.get(call["call_id"]),
                             "requires_approval": call["tool_name"] in WRITE_TOOL_NAMES,
                         }
                     )
                 if isinstance(message, ToolMessage):
-                    events.append({"event": "tool_result", **self._tool_result_event(message, tool_names)})
+                    result_event = self._tool_result_event(message, tool_names)
+                    result_event["trace_order"] = tool_trace_orders.get(result_event["call_id"])
+                    events.append({"event": "tool_result", **result_event})
             # 最终回答在统一收尾阶段发送，避免把模型的中间消息误当成答案。
             if node in {"finalize", "limit"} and payload.get("last_answer"):
                 events.append({"event": "answer", "answer": str(payload["last_answer"])})
@@ -450,6 +466,7 @@ class AgentService:
         graph = self._require_graph()
         config = self._config(thread_id)
         tool_names: dict[str, str] = {}
+        tool_trace_orders: dict[str, int] = {}
         approval_emitted = False
         answer_emitted = False
         try:
@@ -468,10 +485,12 @@ class AgentService:
             async for update in graph.astream(
                 graph_input,
                 config=config,
-                stream_mode="updates",
+                stream_mode=["updates", "custom"],
                 version="v2",
             ):
-                for event in self._events_from_update(update, tool_names):
+                for event in self._events_from_update(update, tool_names, tool_trace_orders):
+                    event.setdefault("run_id", run_id)
+                    event.setdefault("thread_id", thread_id)
                     if event.get("event") == "approval_required":
                         approval_emitted = True
                     if event.get("event") == "answer":
@@ -555,6 +574,11 @@ class AgentService:
                 "run_id": run_id,
                 "tool_call_count": 0,
                 "tool_trace": [],
+                "llm_trace": [],
+                "active_llm_stage_id": None,
+                "active_llm_stage_started_at_ms": None,
+                "pending_tool_trace_orders": {},
+                "trace_sequence": 0,
                 "sources": [],
                 "status": "running",
                 "approval_status": "none",
@@ -562,6 +586,7 @@ class AgentService:
                 "last_answer": "",
                 "last_error": "",
                 "web_search_enabled": bool(web_search_enabled),
+                "knowledge_evidence_required": knowledge_evidence_required_for_query(user_input),
             }
             async for event in self._stream_graph(graph_input, thread_id, run_id):
                 yield event

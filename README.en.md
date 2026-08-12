@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | [English](README.en.md)
 
-A local demo project for AI Agent, RAG, and LLM application development. The default entry is an enterprise knowledge operations Agent: it can select tools in a bounded loop, cite retrieved sources, pause write operations for human approval, and resume from a PostgreSQL LangGraph checkpoint after a service restart. The system also provides document ingestion, Chroma retrieval, hybrid retrieval, Dynamic RAG, and RAGAS evaluation.
+A local demo project for AI Agent, RAG, and LLM application development. The default entry is an enterprise knowledge operations Agent: the model first decides whether a tool is needed, answers ordinary conversation directly, and invokes the RAG tool for enterprise-material questions. It cites retrieved sources, pauses write operations for human approval, and resumes from a PostgreSQL LangGraph checkpoint after a service restart. The system also provides document ingestion, Chroma retrieval, hybrid retrieval, Dynamic RAG, and RAGAS evaluation.
 
 This is a runnable demo prototype, not a production system. It does not claim real company deployment, user scale, revenue, or online traffic.
 
@@ -24,21 +24,34 @@ This is a runnable demo prototype, not a production system. It does not claim re
 flowchart LR
     USER[User / Web console] --> API[FastAPI]
     API --> AGENT[LangGraph Agent]
-    AGENT --> MODEL[DeepSeek]
-    AGENT --> TOOLS[ToolNode]
-    TOOLS --> AGENT
+    AGENT --> MODEL{DeepSeek task decision}
+    MODEL -->|No enterprise evidence needed| DIRECT[Direct answer]
+    MODEL -->|Tool required| TOOLS[ToolNode]
+    TOOLS --> MODEL
     TOOLS --> APPROVAL{Write approval}
     APPROVAL --> EFFECT[Retry / reindex / delete]
+    TOOLS -->|search_knowledge_base| RETRIEVE[Dense / BM25 / RRF]
+    RETRIEVE --> MODEL
+    RETRIEVE --> CONF{Evidence confidence}
+    CONF -->|Low and web enabled| WEB[Tavily]
+    WEB --> MODEL
+    CONF -->|Low and web disabled| REFUSE[Safe refusal]
     AGENT --> CHECKPOINT[(PostgreSQL checkpoint)]
     API --> INGEST[Ingestion pipeline]
     INGEST --> PARSE[MinerU / pypdf]
     PARSE --> SPLIT[Markdown + recursive split]
     SPLIT --> EMB[Qwen embedding]
     EMB --> CHROMA[(Chroma)]
-    CHROMA --> RETRIEVE[Dense / BM25 / RRF]
-    RETRIEVE --> MODEL
-    AGENT -. low-confidence fallback .-> WEB[Tavily]
+    CHROMA --> RETRIEVE
 ```
+
+## Latest Agent Capabilities
+
+- **On-demand RAG routing:** `search_knowledge_base` is an Agent tool. Greetings, thanks, and requests that do not depend on enterprise material can finish without embedding or vector retrieval.
+- **Evidence guard:** when a user explicitly requests knowledge-base, uploaded-document, or internal evidence, LangGraph supplies one controlled retrieval if the model omitted it and refuses unsupported answers when evidence is unavailable.
+- **Recoverable execution trace:** SSE and PostgreSQL checkpoints retain safe LLM-stage summaries, tool activity, sources, and approval state across page refreshes and FastAPI restarts.
+- **Controlled web fallback:** Tavily is available only when the workbench toggle is enabled and knowledge-base confidence is low.
+- **Conversation lifecycle:** Agent threads can be created, switched, restored, and deleted; running or approval-pending threads are protected from deletion.
 
 The runtime uses PostgreSQL for document metadata, upload batches, fingerprints,
 legacy chat history, and LangGraph checkpoints. Chroma and uploaded/parsed files
@@ -60,8 +73,9 @@ APIs; no local model download is required.
 - Provide a local web console for upload, chat, retrieval debugging, and evaluation.
 - Support single-document deletion, reindexing, request IDs, stage timings, and Docker Compose deployment.
 - Use a `MessagesState` + `ToolNode` loop with a six-call safety limit and PostgreSQL checkpoint persistence.
-- Provide a Web Search toggle: disabled means knowledge-base-only answers; enabled allows Tavily only after low-confidence knowledge retrieval.
+- Provide a Web Search toggle: the model still selects tools on demand, while Tavily is allowed only after low-confidence knowledge retrieval.
 - Require approval for retry, reindex, and delete tools; expose SSE events and a recoverable Agent workbench.
+- Show safe LLM stage summaries alongside tool calls, tool results, and approval status.
 - Record upload batch status, SHA-256 content deduplication, failed stages, and retry attempts.
 - Keep a one-time SQLite-to-PostgreSQL migration script for metadata from older versions.
 
@@ -239,11 +253,26 @@ an answer source.
 - `POST /api/evaluation/ragas/run` runs RAGAS evaluation.
 - `GET /api/documents/upload-batches` and the batch detail/retry routes expose upload history.
 
-The Agent emits `run_started`, `tool_call`, `tool_result`, `approval_required`,
+The Agent emits `run_started`, `llm_stage`, `tool_call`, `tool_result`, `approval_required`,
 `answer`, `error`, and `done` events. Retry, reindex, and delete are paused with
 `interrupt()` before side effects. Resume uses the same `thread_id` and the
 `approval_id` shown in the approval event. A running or approval-pending thread
 cannot be deleted and returns `409`; deleting a missing thread is idempotent.
+
+The Agent now decides whether a tool is needed before executing it. Greetings,
+thanks, and requests that do not depend on enterprise material can be answered
+directly. When the user explicitly asks for the knowledge base, uploaded
+documents, or internal material, `search_knowledge_base` is required; a graph
+guard prevents an unsupported model-only answer when evidence is missing.
+Web search remains disabled or enabled per run, and is only used as a fallback
+after low-confidence knowledge-base evidence.
+
+The workbench timeline combines model analysis, tool execution, and approval
+stages in `trace_order`. `llm_stage` contains a safe summary, duration, and a
+`reasoning_available` flag; it never exposes DeepSeek's raw
+`reasoning_content`. The default `.env.example` enables DeepSeek thinking mode,
+which can increase latency and token usage. Set `DEEPSEEK_THINKING_TYPE=disabled`
+to keep lifecycle stages without the provider reasoning signal.
 
 ## RAGAS Evaluation
 

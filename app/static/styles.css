@@ -1088,6 +1088,16 @@ details pre,
   background: var(--surface-muted);
 }
 
+.timeline-item.llm-stage-item {
+  border-left-color: #6b7280;
+  background: #f7f8fa;
+}
+
+.timeline-item.llm-stage-item.tool-pending {
+  border-left-color: var(--warning);
+  background: var(--warning-soft);
+}
+
 .timeline-item.tool-error {
   border-left-color: var(--danger);
   background: var(--danger-soft);
@@ -1107,6 +1117,11 @@ details pre,
   color: var(--muted);
   font-size: 12px;
   word-break: break-word;
+}
+
+.timeline-stage-meta {
+  color: var(--muted) !important;
+  font-size: 11px !important;
 }
 
 .timeline-details {

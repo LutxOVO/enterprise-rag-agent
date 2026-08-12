@@ -4,16 +4,29 @@
 
 ```text
 用户任务
+  -> 模型分析任务
   -> 模型选择工具
   -> ToolNode 执行
   -> 记录工具轨迹和来源
-  -> 模型观察结果后继续选择
+  -> 模型分析工具结果后继续选择
   -> 最终回答 / 审批中断 / 安全结束
 ```
 
 ## 为什么要用 checkpoint
 
-Agent 的 `messages`、`run_id`、工具轨迹、来源、调用次数和审批状态都保存在 PostgreSQL 的 LangGraph checkpoint 中。模型对象、连接、锁和 `Path` 不进入图状态，因此状态可以被序列化，也可以在 FastAPI 容器重启后恢复。
+Agent 的 `messages`、`run_id`、LLM 阶段轨迹、工具轨迹、来源、调用次数和审批状态都保存在 PostgreSQL 的 LangGraph checkpoint 中。模型对象、连接、锁和 `Path` 不进入图状态，因此状态可以被序列化，也可以在 FastAPI 容器重启后恢复。
+
+## LLM 阶段轨迹
+
+每次模型调用前，`begin_llm_stage` 节点会通过 LangGraph `get_stream_writer()` 发出 `llm_stage(status=started)`；模型返回后更新同一个 `stage_id`，记录完成状态、阶段摘要、工具名、耗时和 `reasoning_available`。前端因此可以看到：
+
+```text
+模型分析 -> 工具调用 -> 工具结果 -> 模型分析 -> 最终回答
+```
+
+`reasoning_available` 只表示模型响应中是否包含 DeepSeek `reasoning_content`。原始内容不会进入 SSE 或状态接口，只保留在 `AIMessage.additional_kwargs` 中，用于下一轮 DeepSeek 工具调用时回传兼容。关闭 DeepSeek thinking 模式后，生命周期阶段仍然存在，但该标志为 `false`。
+
+模型阶段和工具阶段共享 `trace_order`，并通过独立的 `llm_trace`、`tool_trace` 字段保存。刷新页面或服务重启后，服务端返回两组轨迹，前端按序合并恢复。
 
 应用启动时由 `app/agent/checkpoint.py` 创建一个 `AsyncPostgresSaver`，执行一次 `setup()`，然后把它传给 `build_agent_graph()`。图在启动阶段编译一次；每次请求只通过 `thread_id` 找回对应 checkpoint。
 
@@ -45,23 +58,25 @@ Agent 可以使用以下工具：
 }
 ```
 
-### 关闭时：知识库模式
+### 关闭时：按需知识库模式
 
 关闭后，`build_agent_system_prompt(False)` 会把以下边界放入本轮 system message：
 
 - 不能调用 `search_web`；
-- 不能使用模型自身记忆补充知识库没有提供的事实；
-- 只能依据 `search_knowledge_base` 的 `context` 和来源回答；
-- 证据不足时必须明确说知识库信息不足。
+- 寒暄、致谢和不依赖企业资料的问题可以直接回答；
+- 如果用户明确要求依据知识库、上传文档、企业制度或项目资料，必须调用 `search_knowledge_base`；
+- 调用知识库后只能依据它返回的 `context` 和来源回答，证据不足时必须明确说知识库信息不足。
 
-提示词不是唯一防线。图在模型节点之后还会检查工具调用：即使模型错误地产生了 `search_web` call，`guard_web_search` 也只返回一个“联网搜索已关闭”的工具结果，不会创建 Tavily 客户端，更不会发出网络请求。知识库检索结果没有可用证据时，`finalize` 会把模型可能生成的答案覆盖成安全拒答。
+提示词不是唯一防线。图在模型节点之后还会检查工具调用：即使模型错误地产生了 `search_web` call，`guard_web_search` 也只返回一个“联网搜索已关闭”的工具结果，不会创建 Tavily 客户端，更不会发出网络请求。对于明确要求企业资料的问题，如果模型没有主动生成 `search_knowledge_base` 调用，图会补一次受控的标准检索；检索结果没有可用证据时，`finalize` 会把模型可能生成的答案覆盖成安全拒答。因此 RAG 是按需工具，但不会被知识库问题绕过。
 
 ### 开启时：低可信度兜底
 
-开启后并不是每个问题都联网。流程是：
+开启后并不是每个问题都联网，也不是每个问题都先检索知识库。流程是：
 
 ```text
-search_knowledge_base
+模型判断是否需要工具
+  -> 不需要：直接回答
+  -> 需要知识库：search_knowledge_base
   -> 计算来源数量和相关性信号
   -> fallback_to_web_search=true ?
        -> 是：自动调用一次 search_web
@@ -138,6 +153,7 @@ SSE `data` 中的 `event` 只使用以下值：
 | 事件 | 用途 |
 | --- | --- |
 | `run_started` | 记录本轮 run_id 和是否恢复 |
+| `llm_stage` | 模型分析阶段的开始/完成/失败摘要、耗时和思考信号 |
 | `tool_call` | 工具名称和参数 |
 | `tool_result` | 执行摘要、状态和脱敏结果 |
 | `approval_required` | 审批卡数据 |

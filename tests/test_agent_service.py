@@ -60,15 +60,37 @@ async def read_demo(value: str) -> dict:
     return {"ok": True, "message": f"read {value}"}
 
 
+@tool("search_knowledge_base")
+async def fake_search_knowledge_base(query: str, mode: str = "standard", top_k: int = 4) -> dict:
+    """测试用知识库工具，验证模型漏调时的安全兜底。"""
+    return {
+        "ok": True,
+        "kind": "knowledge_search",
+        "query": query,
+        "mode": mode,
+        "has_evidence": True,
+        "evidence_usable": True,
+        "sources": [
+            {
+                "document_id": "demo-doc",
+                "filename": "demo.md",
+                "chunk_index": 0,
+                "content_preview": "这是来自测试知识库的资料。",
+            }
+        ],
+        "context": "这是来自测试知识库的资料。",
+    }
+
+
 @pytest.mark.anyio
 async def test_agent_supports_no_tool_and_continuous_tool_loop():
     direct = AgentService(InMemorySaver(), model=ScriptedModel())
     direct_events = [event async for event in direct.run_stream("你好", "direct-thread")]
-    assert [event["event"] for event in direct_events] == [
-        "run_started",
-        "answer",
-        "done",
-    ]
+    assert [event["event"] for event in direct_events][0] == "run_started"
+    assert [event["event"] for event in direct_events][-2:] == ["answer", "done"]
+    direct_stages = [event for event in direct_events if event["event"] == "llm_stage"]
+    assert [stage["status"] for stage in direct_stages] == ["started", "completed"]
+    assert direct_stages[-1]["reasoning_available"] is False
     assert direct_events[-1]["status"] == "completed"
 
     looping = AgentService(
@@ -84,6 +106,79 @@ async def test_agent_supports_no_tool_and_continuous_tool_loop():
     state = await looping.get_state("loop-thread")
     assert state["tool_call_count"] == 2
     assert len(state["tool_trace"]) == 2
+    assert len(state["llm_trace"]) == 3
+    assert [item["trace_order"] for item in state["llm_trace"]] == [1, 3, 5]
+    assert [item["trace_order"] for item in state["tool_trace"]] == [2, 4]
+    assert all("reasoning_content" not in item for item in state["llm_trace"])
+
+
+@pytest.mark.anyio
+async def test_agent_selects_rag_only_when_needed_and_guards_explicit_knowledge_requests():
+    class DirectModel:
+        async def ainvoke(self, messages):
+            # 故意不调用工具：普通请求应直接结束，知识库请求应被图补一次检索。
+            if any(isinstance(message, ToolMessage) for message in messages):
+                return AIMessage(content="已根据检索资料回答。")
+            return AIMessage(content="这是一个不需要知识库的直接回答。")
+
+    casual_service = AgentService(InMemorySaver(), model=DirectModel(), tools=[fake_search_knowledge_base])
+    casual_events = [event async for event in casual_service.run_stream("你好", "routing-casual")]
+    assert not [event for event in casual_events if event["event"] == "tool_call"]
+    assert casual_events[-1]["status"] == "completed"
+
+    knowledge_service = AgentService(InMemorySaver(), model=DirectModel(), tools=[fake_search_knowledge_base])
+    knowledge_events = [
+        event
+        async for event in knowledge_service.run_stream(
+            "请根据知识库回答这个问题",
+            "routing-knowledge",
+        )
+    ]
+    tool_calls = [event for event in knowledge_events if event["event"] == "tool_call"]
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["tool_name"] == "search_knowledge_base"
+    assert knowledge_events[-1]["status"] == "completed"
+    state = await knowledge_service.get_state("routing-knowledge")
+    assert state["tool_trace"][0]["name"] == "search_knowledge_base"
+    assert state["last_answer"] == "已根据检索资料回答。"
+
+
+@pytest.mark.anyio
+async def test_llm_stage_only_exposes_reasoning_availability():
+    class ThinkingModel:
+        async def ainvoke(self, messages):
+            return AIMessage(
+                content="基于模型阶段完成回答",
+                additional_kwargs={"reasoning_content": "这是不应出现在轨迹里的原始内容"},
+            )
+
+    service = AgentService(InMemorySaver(), model=ThinkingModel())
+    events = [event async for event in service.run_stream("测试思考阶段", "thinking-thread")]
+    stages = [event for event in events if event["event"] == "llm_stage"]
+    assert stages[-1]["reasoning_available"] is True
+    assert "原始内容" not in str(stages)
+    state = await service.get_state("thinking-thread")
+    assert state["llm_trace"][0]["reasoning_available"] is True
+    assert "reasoning_content" not in str(state["llm_trace"])
+
+
+@pytest.mark.anyio
+async def test_model_failure_marks_llm_stage_failed():
+    class FailingModel:
+        async def ainvoke(self, messages):
+            raise RuntimeError("模拟模型故障")
+
+    service = AgentService(InMemorySaver(), model=FailingModel())
+    events = [event async for event in service.run_stream("测试模型失败", "model-error-thread")]
+    failed_stages = [
+        event for event in events
+        if event["event"] == "llm_stage" and event["status"] == "failed"
+    ]
+    assert failed_stages
+    assert events[-1]["status"] == "failed"
+    state = await service.get_state("model-error-thread")
+    assert state["status"] == "failed"
+    assert state["llm_trace"][0]["status"] == "failed"
 
 
 @pytest.mark.anyio

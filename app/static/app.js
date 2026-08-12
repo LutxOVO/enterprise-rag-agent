@@ -748,7 +748,7 @@ function renderAgentTimeline() {
   const box = $("#agentTimeline");
   const empty = $("#timelineEmpty");
   if (!box) return;
-  const calls = state.agentTimeline.filter((item) => item.type === "tool" || item.type === "call");
+  const calls = state.agentTimeline.filter((item) => item.type === "tool" || item.type === "call" || item.type === "llm");
   if (empty) empty.hidden = calls.length > 0;
   $("#traceCount").textContent = calls.length;
   $("#railTraceCount").textContent = calls.length;
@@ -759,6 +759,22 @@ function renderAgentTimeline() {
   }
 
   box.innerHTML = state.agentTimeline.map((item) => {
+    if (item.type === "llm") {
+      const pending = item.status === "started";
+      const failed = item.status === "failed";
+      const statusLabel = pending ? "进行中" : (failed ? "执行失败" : "已完成");
+      const reasoningLabel = item.reasoning_available ? "思考模式已启用" : "阶段摘要";
+      return `
+        <div class="timeline-item llm-stage-item ${failed ? "tool-error" : ""} ${pending ? "tool-pending" : ""}">
+          <div class="timeline-item-heading">
+            <strong>模型分析</strong>
+            <span class="timeline-status">${escapeHtml(statusLabel)}</span>
+          </div>
+          <span>${escapeHtml(item.summary || (pending ? "正在分析任务" : "模型分析已完成"))}</span>
+          <span class="timeline-stage-meta">${escapeHtml(reasoningLabel)}${item.duration_ms != null ? ` · ${escapeHtml(String(item.duration_ms))} ms` : ""}</span>
+        </div>
+      `;
+    }
     const pending = item.ok === undefined;
     const statusLabel = pending
       ? (item.requires_approval ? "等待审批" : "执行中")
@@ -848,7 +864,7 @@ function syncAgentAnswer(agentState) {
 
 function renderAgentState(agentState, context) {
   if (!isCurrentAgentContext(context)) return;
-  state.agentTimeline = (agentState.tool_trace || []).map((item) => ({
+  const toolItems = (agentState.tool_trace || []).map((item) => ({
     type: "tool",
     call_id: item.call_id,
     tool_name: item.name,
@@ -858,7 +874,13 @@ function renderAgentState(agentState, context) {
     status: item.status,
     summary: item.result?.message || item.result?.error || item.status,
     result: item.result,
+    trace_order: item.trace_order,
   }));
+  const llmItems = (agentState.llm_trace || []).map((item) => ({
+    type: "llm",
+    ...item,
+  }));
+  state.agentTimeline = [...toolItems, ...llmItems].sort((left, right) => (left.trace_order || 0) - (right.trace_order || 0));
   renderAgentTimeline();
   renderAgentSources(agentState.sources || []);
   syncAgentAnswer(agentState);
@@ -908,6 +930,17 @@ function handleAgentEvent(event, context) {
     renderAgentTimeline();
     upsertSessionMeta(context.threadId, { status: "running", updatedAt: Date.now() });
     setAgentStatus(`正在执行：${getToolLabel(event.tool_name)}`);
+    openContextPanel("timelineContext");
+    return;
+  }
+  if (event.event === "llm_stage") {
+    const existing = state.agentTimeline.find((item) => item.type === "llm" && item.stage_id === event.stage_id);
+    if (existing) Object.assign(existing, event, { type: "llm" });
+    else state.agentTimeline.push({ type: "llm", ...event });
+    state.agentTimeline.sort((left, right) => (left.trace_order || 0) - (right.trace_order || 0));
+    renderAgentTimeline();
+    upsertSessionMeta(context.threadId, { status: event.status === "failed" ? "failed" : "running", updatedAt: Date.now() });
+    setAgentStatus(event.status === "started" ? event.summary || "模型正在分析任务..." : event.summary || "模型分析已完成。");
     openContextPanel("timelineContext");
     return;
   }

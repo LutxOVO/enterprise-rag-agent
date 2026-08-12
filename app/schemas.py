@@ -136,6 +136,7 @@ class AgentStateResponse(BaseModel):
     run_id: str | None = None
     pending_approval: dict[str, Any] | None = None
     tool_trace: list[dict[str, Any]] = Field(default_factory=list)
+    llm_trace: list[dict[str, Any]] = Field(default_factory=list)
     sources: list[dict[str, Any]] = Field(default_factory=list)
     tool_call_count: int = 0
     approval_status: str = "none"

@@ -49,9 +49,8 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_chat_model: str = "deepseek-chat"
-    # Agent 默认关闭思考模式，避免第三方 OpenAI 适配器丢失 reasoning_content。
-    # 如果确实需要思考模式，可以改为 enabled；项目兼容层会负责回传该字段。
-    deepseek_thinking_type: str = "disabled"
+    # Agent 默认开启思考模式；兼容层只把 reasoning_content 用于后续请求，不会暴露给前端。
+    deepseek_thinking_type: str = "enabled"
 
     # Tavily 只在工作台开关打开且知识库证据不足时使用；密钥只从 .env 读取。
     tavily_api_key: str = ""

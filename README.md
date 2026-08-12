@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/LutxOVO/enterprise-rag-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/LutxOVO/enterprise-rag-agent/actions/workflows/ci.yml)
 
-这是一个适合 AI Agent / RAG / 大模型应用开发方向学习、面试演示和二次开发的本地 Demo 项目。默认入口是企业知识运营 Agent：模型可以连续选择只读工具、观察结果、检索并引用来源；删除、重建索引和失败重试等写操作会暂停等待人工审批，并依靠 PostgreSQL checkpoint 在服务重启后继续。系统同时保留文档入库、Hybrid 检索、Dynamic RAG、HyDE、RAGAS 评估和原生 Web 控制台。
+这是一个适合 AI Agent / RAG / 大模型应用开发方向学习、面试演示和二次开发的本地 Demo 项目。默认入口是企业知识运营 Agent：模型先判断任务是否需要工具，普通交流可以直接回答，企业资料问题则调用 RAG Tool 检索并引用来源；删除、重建索引和失败重试等写操作会暂停等待人工审批，并依靠 PostgreSQL checkpoint 在服务重启后继续。系统同时保留文档入库、Hybrid 检索、Dynamic RAG、HyDE、RAGAS 评估和原生 Web 控制台。
 
 项目不虚构真实公司经历、用户量或生产数据，定位是“可运行的 Demo 原型”和“本地知识库问答系统”。
 
@@ -14,30 +14,44 @@
 flowchart LR
     U[用户或 Web 控制台] --> API[FastAPI API]
     API --> AGENT[企业知识运营 Agent]
-    AGENT --> MODEL[模型选择工具]
-    MODEL --> TOOLS[ToolNode 执行工具]
+    AGENT --> MODEL{模型判断任务}
+    MODEL -->|无需企业资料| DIRECT[直接回答]
+    MODEL -->|需要工具| TOOLS[ToolNode 执行工具]
     TOOLS --> MODEL
     TOOLS --> APPROVAL{写操作需要审批}
     APPROVAL -->|批准后| EFFECT[重试 / 重建 / 删除]
+    TOOLS -->|search_knowledge_base| RETRIEVE
+    RETRIEVE --> MODEL
+    RETRIEVE --> CONF{证据可信度}
+    CONF -->|不足且允许联网| WEB[Tavily]
+    WEB --> MODEL
+    CONF -->|不足且禁止联网| REFUSE[安全拒答]
     AGENT --> CHECKPOINT[(PostgreSQL LangGraph checkpoint)]
     API --> INGEST[上传与入库流水线]
     INGEST --> PARSE[MinerU 或 pypdf 解析]
     PARSE --> SPLIT[Markdown 标题切分与递归切分]
     SPLIT --> EMB[Qwen text-embedding-v4]
     EMB --> CHROMA[(Chroma 持久化向量库)]
-    API --> RETRIEVE{检索策略}
-    RETRIEVE --> DENSE[Dense 向量检索]
-    RETRIEVE --> BM25[BM25 关键词检索]
+    RETRIEVE --> STRATEGY{检索策略}
+    STRATEGY --> DENSE[Dense 向量检索]
+    STRATEGY --> BM25[BM25 关键词检索]
     DENSE --> RRF[RRF 融合排序]
     BM25 --> RRF
     CHROMA --> DENSE
     CHROMA --> BM25
-    RRF --> PROMPT[上下文拼接与 Prompt 防注入]
-    PROMPT --> LLM[DeepSeek Chat]
-    LLM --> ANSWER[回答与来源 chunks]
+    RRF --> CONTEXT[上下文与真实来源 chunks]
+    CONTEXT --> MODEL
     API --> POSTGRES[(PostgreSQL 状态、批次、指纹、对话)]
     API --> EVAL[RAGAS + Hit@K/MRR 离线评估]
 ```
+
+## 最新 Agent 能力
+
+- **按需 RAG 路由**：RAG 以 `search_knowledge_base` Tool 的形式暴露，模型先判断是否需要检索；寒暄、致谢和不依赖企业资料的请求不会默认消耗 Embedding 与向量检索。
+- **知识证据闸门**：用户明确要求依据知识库、上传文档或企业资料回答时，如果模型漏调 RAG，LangGraph 会补一次受控检索；没有可用证据时禁止依赖模型记忆作答。
+- **可恢复执行轨迹**：SSE 和 PostgreSQL checkpoint 同时记录 LLM 阶段摘要、工具调用、工具结果、来源和审批状态；页面刷新或 FastAPI 重启后仍可恢复。
+- **受控联网兜底**：Tavily 由工作台开关控制，仅在知识库低可信度后执行；关闭时不会产生第三方联网请求。
+- **会话生命周期管理**：支持创建、切换和删除 Agent 会话；运行中或等待审批的线程禁止删除，避免丢失未完成操作。
 
 ## 项目展示
 
@@ -145,9 +159,9 @@ copy .env.example .env
 - 内置 Web 控制台，可完成上传、问答、检索调试和评估操作。
 - 支持单文档删除、复用原文件重建索引、请求 ID 和 RAG 阶段耗时记录。
 - 默认 Agent 使用 `MessagesState` 和 `ToolNode` 进行有界多轮工具循环，最多执行 6 次工具调用。
-- Agent 工作台提供“联网搜索”开关：关闭时严格只依据知识库回答，开启时仅在知识库证据不足后使用 Tavily 兜底。
+- Agent 工作台提供“联网搜索”开关：模型先判断是否需要工具；明确要求企业资料时调用知识库，开启联网搜索后仅在知识库证据不足时使用 Tavily 兜底。
 - 写工具通过 `interrupt()` 暂停，使用相同 `thread_id` 和 `Command(resume=...)` 恢复；审批状态、工具轨迹和来源可在刷新或重启后恢复。
-- SSE 固定输出 `run_started`、`tool_call`、`tool_result`、`approval_required`、`answer`、`error`、`done` 事件。
+- SSE 输出 `run_started`、`llm_stage`、`tool_call`、`tool_result`、`approval_required`、`answer`、`error`、`done` 事件；轨迹会显示模型分析阶段、工具执行和审批状态。
 
 ## 项目结构
 
@@ -407,10 +421,10 @@ Web 控制台是原生 HTML/CSS/JS 页面，不需要 Node 或前端构建工具
 
 | 状态 | Agent 行为 |
 | --- | --- |
-| 关闭 | 系统提示词要求模型不能调用 `search_web`、不能使用模型自身知识补充，只能依据 `search_knowledge_base` 返回的上下文回答。知识库没有足够证据时固定回复“当前知识库中没有足够信息回答该问题”。 |
-| 开启 | 仍然先调用知识库检索；只有来源数量不足或相关性分数低，检索结果中的 `fallback_to_web_search` 变为 `true` 时，图才自动调用一次 Tavily。 |
+| 关闭 | 模型先判断是否需要工具。寒暄和不依赖企业资料的问题可以直接回答；明确要求依据知识库、文档或企业资料时必须调用 `search_knowledge_base`，没有证据就拒答。禁止调用 `search_web`。 |
+| 开启 | 模型仍然按需选择工具；知识库检索结果低可信度时，图才自动调用一次 Tavily 兜底，不会让每个问题都联网。 |
 
-这个开关不是只有前端显示：请求会把 `web_search_enabled` 发送到 `/api/agent/runs/stream`，并保存到该线程的 PostgreSQL checkpoint。服务端还会拦截模型越过知识库直接调用网页工具的请求，因此关闭开关时不会触发 Tavily 网络请求。
+这个开关不是只有前端显示：请求会把 `web_search_enabled` 发送到 `/api/agent/runs/stream`，并保存到该线程的 PostgreSQL checkpoint。服务端还会拦截模型越过知识库直接调用网页工具的请求，因此关闭开关时不会触发 Tavily 网络请求。对于明确要求企业资料的问题，图还会校验模型是否真正调用了知识库工具，防止模型绕过 RAG 凭记忆回答。
 
 联网搜索结果会标记为 `source_type=web`，保留网页标题、URL、相关性分数和摘要；它们只是资料，不是可以执行的指令。Tavily 请求失败、没有结果或开关关闭时，系统不会把低可信度内容当作答案，而是安全拒答。
 
@@ -426,6 +440,10 @@ docker compose up -d --force-recreate rag
 ```
 
 `TAVILY_MAX_RESULTS` 默认是 5，`TAVILY_SEARCH_DEPTH=basic` 用于控制成本和延迟。`KNOWLEDGE_MIN_SOURCES` 与 `KNOWLEDGE_MIN_CONFIDENCE` 是演示项目的保守门槛，调整后应重新观察检索结果和 Agent 轨迹，不要把它们当成通用准确率阈值。Hybrid 的 RRF 分数只负责融合排序；可信度门控使用 Chroma 返回的原始 cosine distance，避免“有排名就误认为相关”。
+
+### LLM 思考阶段轨迹
+
+工作台的“轨迹”会按顺序展示“模型分析 -> 工具调用 -> 工具结果 -> 模型分析 -> 最终回答”。`llm_stage` 只返回安全的阶段摘要、耗时和 `reasoning_available` 标志，不返回 DeepSeek 原始 `reasoning_content`，后者只保存在消息内部用于下一轮工具调用兼容。默认配置 `DEEPSEEK_THINKING_TYPE=enabled`，开启会增加耗时和 Token 消耗；改为 `disabled` 后仍会显示模型分析阶段，但思考信号显示为不可用。修改 `.env` 后需要重启本地进程或重新创建 Docker 应用容器。
 
 启动可恢复 Agent 运行：
 
@@ -462,7 +480,7 @@ DELETE /api/agent/threads/{thread_id}
 SSE 的 `data` 是 JSON，事件顺序通常是：
 
 ```text
-run_started -> tool_call -> tool_result -> answer -> done
+run_started -> llm_stage -> tool_call -> tool_result -> llm_stage -> answer -> done
 ```
 
 写操作会在 `tool_call` 后收到 `approval_required`，此时 `done.status` 是 `awaiting_approval`。批准后使用同一个 `thread_id` 和 `approval_id` 调用 resume；重复审批返回 `409`。Agent 的详细设计、状态字段和 Docker 重启验收见：[docs/agent-workbench.md](docs/agent-workbench.md)。
