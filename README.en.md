@@ -50,7 +50,7 @@ flowchart LR
 - **On-demand RAG routing:** `search_knowledge_base` is an Agent tool. Greetings, thanks, and requests that do not depend on enterprise material can finish without embedding or vector retrieval.
 - **Evidence guard:** when a user explicitly requests knowledge-base, uploaded-document, or internal evidence, LangGraph supplies one controlled retrieval if the model omitted it and refuses unsupported answers when evidence is unavailable.
 - **Recoverable execution trace:** SSE and PostgreSQL checkpoints retain safe LLM-stage summaries, tool activity, sources, and approval state across page refreshes and FastAPI restarts.
-- **Controlled web fallback:** Tavily is available only when the workbench toggle is enabled and knowledge-base confidence is low.
+- **Controlled web access:** Tavily is available when the workbench toggle is enabled; the Agent may select it on demand and it can also be used once as a fallback for low-confidence knowledge retrieval.
 - **Conversation lifecycle:** Agent threads can be created, switched, restored, and deleted; running or approval-pending threads are protected from deletion.
 
 The runtime uses PostgreSQL for document metadata, upload batches, fingerprints,
@@ -73,7 +73,7 @@ APIs; no local model download is required.
 - Provide a local web console for upload, chat, retrieval debugging, and evaluation.
 - Support single-document deletion, reindexing, request IDs, stage timings, and Docker Compose deployment.
 - Use a `MessagesState` + `ToolNode` loop with a six-call safety limit and PostgreSQL checkpoint persistence.
-- Provide a Web Search toggle: the model still selects tools on demand, while Tavily is allowed only after low-confidence knowledge retrieval.
+- Provide a Web Search toggle: the model selects tools on demand, while low-confidence knowledge retrieval can trigger one Tavily fallback.
 - Require approval for retry, reindex, and delete tools; expose SSE events and a recoverable Agent workbench.
 - Show safe LLM stage summaries alongside tool calls, tool results, and approval status.
 - Record upload batch status, SHA-256 content deduplication, failed stages, and retry attempts.
@@ -179,7 +179,7 @@ QWEN_API_KEY="your Alibaba Cloud Model Studio API key"
 MINERU_API_TOKEN="your MinerU API token"
 DEEPSEEK_API_KEY="your DeepSeek API key"
 
-# The workbench uses Tavily only when the knowledge-base evidence is insufficient.
+# The workbench lets the Agent use Tavily on demand when the toggle is enabled.
 TAVILY_API_KEY="your Tavily API key"
 TAVILY_MAX_RESULTS=5
 TAVILY_SEARCH_DEPTH="basic"
@@ -188,8 +188,9 @@ TAVILY_SEARCH_DEPTH="basic"
 `QWEN_API_KEY` is required to index and retrieve documents. `DEEPSEEK_API_KEY`
 is required for RAG answers, Agent routing, and RAGAS judging. `MINERU_API_TOKEN`
 is required only for document formats sent to MinerU. `TAVILY_API_KEY` is
-optional and is used only when the workbench switch is enabled and knowledge-base
-evidence is below the configured confidence threshold. Never commit `.env`.
+optional. It is used only when the workbench switch is enabled; the Agent can call
+web search explicitly or use it once after low-confidence knowledge retrieval.
+Never commit `.env`.
 
 Start the server:
 
@@ -228,9 +229,9 @@ delete PostgreSQL data.
 
 The Agent workbench includes a `web_search_enabled` toggle. When it is `false`, the
 system prompt restricts the model to knowledge-base context and the server blocks
-direct `search_web` calls. When it is `true`, the graph still searches the knowledge
-base first and calls Tavily only when the retrieval result is marked
-`fallback_to_web_search=true`. Web results are returned with titles and URLs and are
+all `search_web` calls. When it is `true`, the Agent may call Tavily directly for an
+explicit web request, or after a knowledge-base result is marked
+`fallback_to_web_search=true`. Web results are returned with titles and URLs and
 treated as untrusted reference material. Failed or empty web searches never become
 an answer source.
 
@@ -245,10 +246,10 @@ an answer source.
 - `POST /api/agent/runs/stream` starts a checkpointed Agent run and streams SSE events.
 - `POST /api/agent/threads/{thread_id}/resume/stream` resumes an approved write operation.
 - `GET /api/agent/threads/{thread_id}/state` returns the persisted thread state.
-- `DELETE /api/agent/threads/{thread_id}` deletes an idle Agent thread and its browser session data.
+- `DELETE /api/agent/threads/{thread_id}` deletes an idle Agent checkpoint; the console then cleans its local browser session data.
 - `POST /api/agent/dynamic-rag` runs the Dynamic RAG workflow with query rewrite and HyDE.
 - `GET /api/vector-store/chunks` inspects stored chunks.
-- `DELETE /api/vector-store/clear` clears vector data and metadata.
+- `DELETE /api/vector-store/clear?confirm=true` clears vector data and metadata; use it only when rebuilding the knowledge base.
 - `POST /api/evaluation/ragas/build-samples` builds cached RAGAS samples.
 - `POST /api/evaluation/ragas/run` runs RAGAS evaluation.
 - `GET /api/documents/upload-batches` and the batch detail/retry routes expose upload history.
@@ -264,8 +265,8 @@ thanks, and requests that do not depend on enterprise material can be answered
 directly. When the user explicitly asks for the knowledge base, uploaded
 documents, or internal material, `search_knowledge_base` is required; a graph
 guard prevents an unsupported model-only answer when evidence is missing.
-Web search remains disabled or enabled per run, and is only used as a fallback
-after low-confidence knowledge-base evidence.
+Web search is enabled or disabled per run. When enabled, it is available on demand
+and can also be used as one fallback after low-confidence knowledge-base evidence.
 
 The workbench timeline combines model analysis, tool execution, and approval
 stages in `trace_order`. `llm_stage` contains a safe summary, duration, and a
